@@ -35,7 +35,6 @@ The app itself runs unprivileged. Temperature reads go straight through IOKit.
 
 ## Acknowledgements
 
-Forked from [solofan](https://github.com/SoloTeamDev/solofan), which builds on
-[ffan](https://github.com/hoobnnlounnas/ffan). Thanks to both.
+Forked from [solofan](https://github.com/SoloTeamDev/solofan). Thanks to the solofan team.
 
 [MIT](LICENSE) © 2026 hoobnn
