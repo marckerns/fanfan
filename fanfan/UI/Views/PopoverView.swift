@@ -242,7 +242,11 @@ struct PopoverView: View {
                                 temp: batteryTemp)
             }
             if hasFans {
-                ControlsCard(viewModel: viewModel)
+                // `EquatableView`-style dedup: ControlsCard re-evaluates only / 中文：`EquatableView` 风格的去重：仅当
+                // when something it actually depends on changes, not on every / 中文：snapshot 真正变化时 ControlsCard 才重算 body，
+                // unrelated `@Published` tick from the view-model. / 中文：与 view-model 上无关的 `@Published` 触发无关。
+                ControlsCard(snapshot: controlsSnapshot, viewModel: viewModel)
+                    .equatable()
             }
         }
     }
@@ -358,6 +362,23 @@ struct PopoverView: View {
             hasBattery: battery.hasBattery,
             batteryPowerWatts: battery.batteryInfo.powerWatts,
             batteryPercentage: battery.batteryInfo.percentage
+        )
+    }
+
+    private var controlsSnapshot: ControlsSnapshot {
+        ControlsSnapshot(
+            controlMode: viewModel.controlMode,
+            numberOfFans: viewModel.numberOfFans,
+            autoThreshold: viewModel.autoThreshold,
+            autoMaxSpeed: viewModel.autoMaxSpeed,
+            autoAggressiveness: viewModel.autoAggressiveness,
+            perFanManualControl: viewModel.perFanManualControl,
+            manualSpeed: viewModel.manualSpeed,
+            manualSpeeds: viewModel.manualSpeeds,
+            fanMinSpeeds: viewModel.fanMinSpeeds,
+            fanMaxSpeeds: viewModel.fanMaxSpeeds,
+            unifiedMinRPM: viewModel.effectiveUnifiedMinRPM,
+            unifiedMaxRPM: viewModel.effectiveUnifiedMaxRPM
         )
     }
 

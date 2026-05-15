@@ -8,8 +8,50 @@
 
 import SwiftUI
 
-struct ControlsCard: View {
-    @ObservedObject var viewModel: FanControlViewModel
+/// Value snapshot of everything `ControlsCard` reads off the view-model. / 中文：`ControlsCard` 从 view-model 上读到的所有内容的值快照。
+/// Built once per popover `body` evaluation; equality on the snapshot lets / 中文：每次 popover `body` 求值时构建一次；快照相等让 SwiftUI
+/// SwiftUI skip `ControlsCard.body` whenever an *unrelated* `@Published` on / 中文：在 view-model 上**无关**的 `@Published` 触发时（例如
+/// the view-model fires (e.g. CPU temperature ticks every 2 s). / 中文：每 2 秒 CPU 温度变化）跳过 `ControlsCard.body`。
+struct ControlsSnapshot: Equatable {
+    var controlMode: ControlMode
+    var numberOfFans: Int
+    var autoThreshold: Double
+    var autoMaxSpeed: Int
+    var autoAggressiveness: Double
+    var perFanManualControl: Bool
+    var manualSpeed: Int
+    var manualSpeeds: [Int]
+    var fanMinSpeeds: [Int]
+    var fanMaxSpeeds: [Int]
+    var unifiedMinRPM: Int
+    var unifiedMaxRPM: Int
+
+    func minRPM(atFan index: Int) -> Int {
+        guard index >= 0, index < fanMinSpeeds.count else {
+            return FanRPMBounds.fallbackMinWhenSMCUnreadable
+        }
+        return fanMinSpeeds[index]
+    }
+
+    func maxRPM(atFan index: Int) -> Int {
+        guard index >= 0, index < fanMaxSpeeds.count else {
+            return FanRPMBounds.fallbackMaxWhenSMCUnreadable
+        }
+        return fanMaxSpeeds[index]
+    }
+}
+
+struct ControlsCard: View, Equatable {
+    /// Read-side state. Equality on this drives SwiftUI's input dedup. / 中文：读侧状态。SwiftUI 的输入去重以它的相等性为准。
+    let snapshot: ControlsSnapshot
+    /// Write-side handle. Held as a plain reference (not `@ObservedObject`) / 中文：写侧句柄。以普通引用持有（不是 `@ObservedObject`），
+    /// so changes on the view-model don't invalidate this view directly — only / 中文：所以 view-model 上的变化不会直接让本视图失效——
+    /// the parent rebuilding the snapshot does. / 中文：只有父视图重建 snapshot 才会。
+    let viewModel: FanControlViewModel
+
+    static func == (lhs: ControlsCard, rhs: ControlsCard) -> Bool {
+        lhs.snapshot == rhs.snapshot
+    }
 
     @Environment(\.colorScheme) private var scheme
 
@@ -33,11 +75,27 @@ struct ControlsCard: View {
         .padding(.vertical, 10)
         .themedCard(scheme)
         .onAppear {
-            selectedMode = viewModel.controlMode
+            selectedMode = snapshot.controlMode
         }
-        .onChange(of: viewModel.controlMode) { _, newMode in
+        .onChange(of: snapshot.controlMode) { _, newMode in
             selectedMode = newMode
         }
+        .onDisappear(perform: cancelPendingSliderApplies)
+    }
+
+    /// Cancel any in-flight debounced slider writes when the popover closes. / 中文：popover 关闭时取消所有处于防抖窗口内的滑杆写入。
+    /// Without this, dragging a slider and closing the popover within the / 中文：否则在 500/700 ms 防抖窗口内拖动滑杆并关闭 popover 时，
+    /// 500–700 ms debounce window lets the stale draft fire after the SwiftUI / 中文：旧 draft 仍会在 SwiftUI 视图树被销毁
+    /// tree (and the `@State` cancel handles) have already been torn down. / 中文：（及 `@State` 取消句柄一起被释放）后触发。
+    private func cancelPendingSliderApplies() {
+        manualApplyTask?.cancel()
+        manualApplyTask = nil
+        manualDraft = nil
+        for (_, task) in perFanApplyTasks {
+            task.cancel()
+        }
+        perFanApplyTasks.removeAll()
+        perFanDraft.removeAll()
     }
 
     // MARK: - Header / 中文：头部
@@ -79,7 +137,7 @@ struct ControlsCard: View {
             LabeledSlider(
                 label: NSLocalizedString("popover.threshold", comment: ""),
                 value: Binding(
-                    get: { viewModel.autoThreshold },
+                    get: { snapshot.autoThreshold },
                     set: { viewModel.setAutoThreshold($0) }
                 ),
                 range: 40...90, step: 1,
@@ -89,7 +147,7 @@ struct ControlsCard: View {
             LabeledSlider(
                 label: NSLocalizedString("popover.max_speed", comment: ""),
                 value: Binding(
-                    get: { Double(viewModel.autoMaxSpeed) },
+                    get: { Double(snapshot.autoMaxSpeed) },
                     set: { viewModel.setAutoMaxSpeed(Int($0)) }
                 ),
                 range: rpmRange,
@@ -99,7 +157,7 @@ struct ControlsCard: View {
             LabeledSlider(
                 label: NSLocalizedString("popover.response", comment: ""),
                 value: Binding(
-                    get: { Double(responseIndex(for: viewModel.autoAggressiveness)) },
+                    get: { Double(responseIndex(for: snapshot.autoAggressiveness)) },
                     set: { viewModel.setAutoAggressiveness(responseStep($0)) }
                 ),
                 range: 0...Double(responseSteps.count - 1), step: 1,
@@ -112,9 +170,9 @@ struct ControlsCard: View {
 
     private var manualSliders: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if viewModel.numberOfFans > 1 {
+            if snapshot.numberOfFans > 1 {
                 Toggle(isOn: Binding(
-                    get: { viewModel.perFanManualControl },
+                    get: { snapshot.perFanManualControl },
                     set: { viewModel.setPerFanManualControl($0) }
                 )) {
                     Text(NSLocalizedString("fan.separate_targets", comment: ""))
@@ -125,15 +183,15 @@ struct ControlsCard: View {
                 .controlSize(.small)
             }
 
-            if viewModel.perFanManualControl && viewModel.numberOfFans > 1 {
-                ForEach(0..<viewModel.numberOfFans, id: \.self) { i in
+            if snapshot.perFanManualControl && snapshot.numberOfFans > 1 {
+                ForEach(0..<snapshot.numberOfFans, id: \.self) { i in
                     perFanRow(index: i)
                 }
             } else {
                 LabeledSlider(
                     label: NSLocalizedString("fan.speed", comment: ""),
                     value: Binding(
-                        get: { manualDraft ?? Double(viewModel.manualSpeed) },
+                        get: { manualDraft ?? Double(snapshot.manualSpeed) },
                         set: { newValue in
                             manualDraft = newValue
                             scheduleApply(Int(newValue))
@@ -143,7 +201,7 @@ struct ControlsCard: View {
                     step: 50,
                     format: { "\(Int($0.rounded())) rpm" }
                 )
-                .onChange(of: viewModel.manualSpeed) { _, new in
+                .onChange(of: snapshot.manualSpeed) { _, new in
                     if let d = manualDraft, Int(d) == new { manualDraft = nil }
                 }
             }
@@ -151,14 +209,14 @@ struct ControlsCard: View {
     }
 
     private func perFanRow(index: Int) -> some View {
-        let mn = Double(viewModel.minRPM(atFan: index))
-        let mx = Double(Swift.max(viewModel.maxRPM(atFan: index), viewModel.minRPM(atFan: index) + 1))
+        let mn = Double(snapshot.minRPM(atFan: index))
+        let mx = Double(Swift.max(snapshot.maxRPM(atFan: index), snapshot.minRPM(atFan: index) + 1))
         let current: Double = {
             if let d = perFanDraft[index] { return d }
-            if index < viewModel.manualSpeeds.count {
-                return Double(viewModel.manualSpeeds[index])
+            if index < snapshot.manualSpeeds.count {
+                return Double(snapshot.manualSpeeds[index])
             }
-            return Double(viewModel.manualSpeed)
+            return Double(snapshot.manualSpeed)
         }()
         return LabeledSlider(
             label: String(format: NSLocalizedString("fan.number", comment: ""), index + 1),
@@ -178,9 +236,8 @@ struct ControlsCard: View {
     // MARK: - Helpers / 中文：辅助方法
 
     private var rpmRange: ClosedRange<Double> {
-        let lo = Double(viewModel.effectiveUnifiedMinRPM)
-        let hi = Double(Swift.max(viewModel.effectiveUnifiedMaxRPM,
-                                  viewModel.effectiveUnifiedMinRPM + 1))
+        let lo = Double(snapshot.unifiedMinRPM)
+        let hi = Double(Swift.max(snapshot.unifiedMaxRPM, snapshot.unifiedMinRPM + 1))
         return lo...hi
     }
 
