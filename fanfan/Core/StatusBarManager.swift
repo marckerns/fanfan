@@ -12,12 +12,12 @@ import Combine
 import QuartzCore
 
 struct StatusBarAnimationSettings {
-    /// The menu-bar icon is 16 pt and turns slowly (≤120°/s). 30 fps is / 中文：The menu-bar 图标 is 16 pt and turns slowly (≤120°/s). 30 fps is
-    /// indistinguishably smooth at that size while costing a quarter of the / 中文：在该尺寸下已经足够平滑，同时只消耗四分之一的
-    /// main-thread time a 120 Hz display would otherwise spend on a purely / 中文：main-th读取 time a 120 Hz display would otherwise spend on a purely
-    /// decorative spinner. / 中文：装饰性旋转图标开销。
-    static let iconFramesPerSecond: Double = 30
-    static let minimumFramesPerSecond: Double = 24
+    /// The menu-bar icon is 16 pt and turns slowly (≤120°/s). At that size / 中文：菜单栏图标只有 16 pt 且转速 ≤120°/s。在该尺寸下，
+    /// 15 fps is visually indistinguishable from 30 fps for a decorative / 中文：装饰性旋转动画 15 fps 和 30 fps 几乎不可分辨；
+    /// spinner — but it halves the rate of `-[NSStatusBarButton setImage:]`, / 中文：但它能把 `-[NSStatusBarButton setImage:]` 的频率减半，
+    /// each of which forces a full button-cell + autolayout + XPC redraw. / 中文：而每次 setImage 都会触发按钮单元 + 自动布局 + XPC 重绘。
+    static let iconFramesPerSecond: Double = 15
+    static let minimumFramesPerSecond: Double = 12
     static let iconCacheCount: Int = 120
 
     /// The icon animates at a fixed calm rate regardless of display refresh. / 中文：The 图标 animates at a fixed calm rate regardless of display refresh.
@@ -58,6 +58,9 @@ class StatusBarManager: NSObject, ObservableObject {
     // display-refresh-sized cache. / 中文：display-refresh-sized 缓存.
     private var iconCache: [Int: NSImage] = [:]
     private let iconCacheCount: Int = StatusBarAnimationSettings.iconCacheCount
+    /// Slot index currently visible on the menu bar; `-1` means none yet. / 中文：当前菜单栏上可见的槽位索引；`-1` 表示尚未绘制。
+    /// Used to dedupe `-[NSStatusBarButton setImage:]` per animation frame. / 中文：用于在每帧动画中去重 `-[NSStatusBarButton setImage:]`。
+    private var lastDrawnIconSlot: Int = -1
 
     func setupStatusBar() {
         DispatchQueue.main.async { [weak self] in
@@ -108,7 +111,11 @@ class StatusBarManager: NSObject, ObservableObject {
         // Set initial icon / 中文：Set initial 图标
         let image = createFanIcon(size: 16, rotation: 0)
         button.image = image
-        button.image?.isTemplate = false // ensure visible regardless of system tint
+        // Template images let WindowServer cache and tint the icon centrally / 中文：模板图像让 WindowServer 集中缓存并着色图标，
+        // (auto-inverts for menu-bar appearance), so each `setImage` is much / 中文：（按菜单栏外观自动反色），这样每次 `setImage` 的下游开销
+        // cheaper downstream than re-blitting a custom RGBA bitmap. The icon / 中文：远低于重新位图绘制 RGBA 像素的成本。该图标本就是
+        // is already a monochrome silhouette, so template mode renders correctly. / 中文：单色剪影，使用模板模式渲染正确。
+        button.image?.isTemplate = true
         button.title = "fanfan 85°"  // Initial temperature display with app name to ensure visibility
         button.imagePosition = .imageLeft
         button.toolTip = "fanfan"
@@ -423,7 +430,21 @@ class StatusBarManager: NSObject, ObservableObject {
 
         currentRotation = (currentRotation + CGFloat(targetDegreesPerSecond * elapsed))
             .truncatingRemainder(dividingBy: 360)
-        button.image = cachedIcon(for: currentRotation)
+
+        // Skip the assignment when the quantized icon slot is unchanged. / 中文：当量化后的图标槽位未变时跳过赋值。
+        // Each `-[NSStatusBarButton setImage:]` re-evaluates the entire button / 中文：每次 `-[NSStatusBarButton setImage:]` 都会重新计算整个按钮单元
+        // cell (attributed title attributes, autolayout, …) regardless of / 中文：（属性化标题属性、自动布局等），与图像是否真正变化无关，
+        // whether the image actually changed — at 30 fps with 120 slots and / 中文：在 30 fps、120 个槽位、低/中转速下，
+        // low/medium fan speeds most frames hit the same slot. / 中文：大多数帧落在同一个槽位上。
+        let slot = iconCacheSlot(for: currentRotation)
+        guard slot != lastDrawnIconSlot else { return }
+        lastDrawnIconSlot = slot
+        button.image = iconCache[slot] ?? cachedIcon(for: currentRotation)
+    }
+
+    private func iconCacheSlot(for rotation: CGFloat) -> Int {
+        let normalized = rotation.truncatingRemainder(dividingBy: 360)
+        return Int((normalized / 360.0 * CGFloat(iconCacheCount)).rounded()) % iconCacheCount
     }
 
     private func stopAnimation() {
@@ -434,6 +455,7 @@ class StatusBarManager: NSObject, ObservableObject {
         isAnimationRunning = false
         targetDegreesPerSecond = 0
         lastFrameTimestamp = nil
+        lastDrawnIconSlot = -1
     }
     
     @objc private func togglePopover() {
