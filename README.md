@@ -16,7 +16,7 @@ A macOS menu bar app that puts you back in charge of your fans.
 ### Homebrew
 
 ```bash
-brew tap hoobnn/fanfan
+brew tap hoobnn/tap
 brew install --cask fanfan
 ```
 

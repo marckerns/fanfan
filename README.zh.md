@@ -16,7 +16,7 @@
 ### Homebrew
 
 ```bash
-brew tap hoobnn/fanfan
+brew tap hoobnn/tap
 brew install --cask fanfan
 ```
 
