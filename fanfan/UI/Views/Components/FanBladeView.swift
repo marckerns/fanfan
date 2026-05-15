@@ -33,67 +33,80 @@ struct FanBladeView: View {
         return min(3.5, max(0, target))
     }
 
+    /// Cap the animation to 30 fps. The blade silhouette is ~100 pt at most / 中文：动画上限 30 fps。叶片可视尺寸至多 ~100 pt，
+    /// and the rotation is leisurely — `.animation`'s display-refresh rate / 中文：旋转也比较缓慢——`.animation` 跟随显示器刷新率
+    /// (60 or 120 Hz on ProMotion) costs 2–4× the SwiftUI relayout for no / 中文：（60 或 ProMotion 上 120 Hz）相比之下要做 2–4× 的
+    /// perceptible gain at this size. / 中文：SwiftUI 重布局，但在这个尺寸下完全察觉不出差别。
+    private static let animationSchedule = PeriodicTimelineSchedule(from: .now, by: 1.0 / 30)
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let degrees = (anchorAngle + (t - anchorTime) * visualRps * 360)
-                .truncatingRemainder(dividingBy: 360)
+        GeometryReader { geo in
+            let r = min(geo.size.width, geo.size.height) / 2
+            let hub = r * 0.28
 
-            GeometryReader { geo in
-                let r = min(geo.size.width, geo.size.height) / 2
-                let hub = r * 0.28
+            ZStack {
+                // Accent bloom — static, lives outside `TimelineView` so it / 中文：强调色光晕——静态元素，放在 `TimelineView` 外，
+                // doesn't re-evaluate (and re-blur) on every animation tick. / 中文：每帧动画 tick 不再重新求值（也不再重做高斯模糊）。
+                Circle()
+                    .fill(accent.opacity(0.55))
+                    .frame(width: hub * 2.6, height: hub * 2.6)
+                    .blur(radius: 6)
 
-                ZStack {
-                    // Blades — rotate together as one group, anchored at the / 中文：叶片：作为一个组整体旋转，锚点位于
-                    // geometric center via `.frame` so transform-origin is exact. / 中文：通过 `.frame` 定位的几何中心，确保变换原点精确。
+                // Rotating parts only. The 30 fps cap + this restricted subtree / 中文：仅旋转部分。30 fps + 受限子树
+                // keep SwiftUI's per-frame work to a fraction of the original / 中文：让 SwiftUI 每帧工作量降到原来 `.animation` 路径的
+                // `.animation` path. / 中文：一小部分。
+                TimelineView(Self.animationSchedule) { timeline in
+                    let t = timeline.date.timeIntervalSinceReferenceDate
+                    let degrees = (anchorAngle + (t - anchorTime) * visualRps * 360)
+                        .truncatingRemainder(dividingBy: 360)
+
                     ZStack {
-                        ForEach(0..<bladeCount, id: \.self) { i in
-                            BladeShape()
-                                .fill(bladeGradient)
-                                .rotationEffect(
-                                    .degrees(Double(i) * (360.0 / Double(bladeCount)))
-                                )
-                            BladeShape()
-                                .stroke(strokeColor.opacity(0.18), lineWidth: 0.5)
-                                .rotationEffect(
-                                    .degrees(Double(i) * (360.0 / Double(bladeCount)))
-                                )
+                        // Blades — rotate together as one group, anchored at the / 中文：叶片：作为一个组整体旋转，锚点位于
+                        // geometric center via `.frame` so transform-origin is exact. / 中文：通过 `.frame` 定位的几何中心，确保变换原点精确。
+                        ZStack {
+                            ForEach(0..<bladeCount, id: \.self) { i in
+                                BladeShape()
+                                    .fill(bladeGradient)
+                                    .rotationEffect(
+                                        .degrees(Double(i) * (360.0 / Double(bladeCount)))
+                                    )
+                                BladeShape()
+                                    .stroke(strokeColor.opacity(0.18), lineWidth: 0.5)
+                                    .rotationEffect(
+                                        .degrees(Double(i) * (360.0 / Double(bladeCount)))
+                                    )
+                            }
                         }
-                    }
-                    .frame(width: r * 2, height: r * 2)
-                    .rotationEffect(.degrees(degrees))
-                    .shadow(color: Color.black.opacity(scheme == .dark ? 0.35 : 0.16),
-                            radius: 2, x: 0, y: 1.5)
-
-                    // Accent bloom behind the hub — a quiet thermal glow. / 中文：轮毂后的强调色光晕：低调的热度辉光。
-                    Circle()
-                        .fill(accent.opacity(0.55))
-                        .frame(width: hub * 2.6, height: hub * 2.6)
-                        .blur(radius: 6)
-
-                    // Hub — the only place that takes the accent color. / 中文：轮毂：唯一使用强调色的位置。
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    Color.white.opacity(0.55),
-                                    accent,
-                                    accent.opacity(0.7),
-                                ],
-                                center: UnitPoint(x: 0.38, y: 0.32),
-                                startRadius: 0,
-                                endRadius: hub
-                            )
-                        )
-                        .frame(width: hub * 2, height: hub * 2)
+                        .frame(width: r * 2, height: r * 2)
                         .rotationEffect(.degrees(degrees))
+                        .shadow(color: Color.black.opacity(scheme == .dark ? 0.35 : 0.16),
+                                radius: 2, x: 0, y: 1.5)
 
-                    Circle()
-                        .fill(Color.black.opacity(0.32))
-                        .frame(width: hub * 0.7, height: hub * 0.7)
+                        // Hub — the only place that takes the accent color. / 中文：轮毂：唯一使用强调色的位置。
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        Color.white.opacity(0.55),
+                                        accent,
+                                        accent.opacity(0.7),
+                                    ],
+                                    center: UnitPoint(x: 0.38, y: 0.32),
+                                    startRadius: 0,
+                                    endRadius: hub
+                                )
+                            )
+                            .frame(width: hub * 2, height: hub * 2)
+                            .rotationEffect(.degrees(degrees))
+                    }
                 }
-                .frame(width: geo.size.width, height: geo.size.height)
+
+                // Inner dot — static, outside `TimelineView`. / 中文：内部黑点——静态，放在 `TimelineView` 外。
+                Circle()
+                    .fill(Color.black.opacity(0.32))
+                    .frame(width: hub * 0.7, height: hub * 0.7)
             }
+            .frame(width: geo.size.width, height: geo.size.height)
         }
         .onChange(of: visualRps) { oldRps, _ in
             // Freeze the angle reached under the old rate, then re-anchor — / 中文：冻结旧速率下已经到达的角度，然后重新锚定，
