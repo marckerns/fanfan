@@ -24,8 +24,8 @@ cd /tmp
 unzip -q fanfan.zip
 
 echo "🔄 Installing to /Applications..."
-rm -rf /Applications/fanfan.app
-mv fanfan.app /Applications/
+sudo rm -rf /Applications/fanfan.app
+sudo mv fanfan.app /Applications/
 
 echo "🔧 Installing privileged fan daemon (requires password)..."
 sudo mkdir -p /usr/local/bin /usr/local/libexec /Library/LaunchDaemons
@@ -40,7 +40,8 @@ sudo launchctl bootstrap system /Library/LaunchDaemons/com.hoobnn.fanfan.smcd.pl
 sudo launchctl kickstart -k system/com.hoobnn.fanfan.smcd
 
 echo "🧹 Cleaning up..."
-rm /tmp/fanfan.zip
+rm -f /tmp/fanfan.zip
+rm -rf /tmp/fanfan.app
 
 echo ""
 echo "✅ Installation complete!"
