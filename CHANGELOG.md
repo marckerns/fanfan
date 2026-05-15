@@ -2,6 +2,11 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [SemVer](https://semver.org/spec/v2.0.0.html)
 
+## [1.0.2] - 2026-05-15
+
+### Performance
+- Halved menu-bar icon animation CPU cost: lowered frame rate from 30 fps to 15 fps, skips `setImage:` calls when the quantized rotation slot is unchanged, and switched to template image mode so WindowServer handles tinting centrally.
+
 ## [1.0.1] - 2026-05-15
 
 ### Added
@@ -27,5 +32,6 @@ First public release. Runs on macOS 26+, Apple Silicon and Intel.
 - Daemon socket exposes only three commands: `PING`, `SET`, `AUTO`.
 - Releases are Developer ID signed and notarized.
 
+[1.0.2]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.2
 [1.0.1]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.1
 [1.0.0]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.0
