@@ -13,7 +13,16 @@
 
 ## 安装
 
-从 [Releases](https://github.com/hoobnn/fanfan/releases/latest) 下载最新 DMG，或：
+### Homebrew
+
+```bash
+brew tap hoobnn/fanfan
+brew install --cask fanfan
+```
+
+### 手动安装
+
+从 [Releases](https://github.com/hoobnn/fanfan/releases/latest) 下载最新 DMG，或运行安装脚本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hoobnn/fanfan/main/scripts/install.sh | bash

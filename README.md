@@ -13,7 +13,16 @@ A macOS menu bar app that puts you back in charge of your fans.
 
 ## Install
 
-Download the latest DMG from [Releases](https://github.com/hoobnn/fanfan/releases/latest), or:
+### Homebrew
+
+```bash
+brew tap hoobnn/fanfan
+brew install --cask fanfan
+```
+
+### Manual
+
+Download the latest DMG from [Releases](https://github.com/hoobnn/fanfan/releases/latest), or run the install script:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hoobnn/fanfan/main/scripts/install.sh | bash
