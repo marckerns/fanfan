@@ -2,6 +2,14 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [SemVer](https://semver.org/spec/v2.0.0.html)
 
+## [1.0.4] - 2026-05-15
+
+### Added
+- Settings now includes an **About** section with the installed version/build and a **Check for Updates** button that queries the GitHub Releases API and offers a one-click download if a newer version is available.
+
+### Changed
+- Renamed the Simplified Chinese locale directory from `zh-Hans.lproj` to `zh.lproj` and updated `knownRegions` accordingly.
+
 ## [1.0.3] - 2026-05-15
 
 ### Performance
