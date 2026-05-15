@@ -213,67 +213,38 @@ jobs:
       - name: 📝 Generate release notes
         id: notes
         run: |
-          cat > release_notes.md << 'EOF'
-          ## 🌬️ fanfan v${{ steps.version.outputs.version }}
+          VERSION="${{ steps.version.outputs.version }}"
+          ZIP_SHA=$(cat "fanfan-v${VERSION}-macos.zip.sha256")
+          DMG_SHA=$(cat "fanfan-v${VERSION}-macos.dmg.sha256")
 
-          ### ✨ Features
-          - 🌡️ Real-time CPU/GPU temperature monitoring
-          - 💨 Manual and automatic fan speed control
-          - 📊 Animated menu bar icon
-          - 🚀 Launch at login support
-          - 🎨 Modern liquid glass UI
+          # Extract the changelog section for this version (between its heading and the next).
+          CHANGELOG=$(awk "/^## \[${VERSION}\]/{found=1; next} found && /^## \[/{exit} found{print}" CHANGELOG.md)
 
-          ### 📦 Installation
-
-          **Option 1: GUI Installation (Recommended)**
-          1. Download and open the DMG
-          2. Drag fanfan.app to /Applications/
-          3. Launch the app - it will prompt you to install the helper tool
-          4. Click "Install Helper" and enter your password once
-          5. Done! No more password prompts needed.
-
-          **Option 2: Command Line Installation**
-
-          Quick install (auto-detects latest version):
-          ```bash
-          curl -fsSL https://raw.githubusercontent.com/hoobnn/fanfan/main/scripts/install.sh | bash
-          ```
-
-          Or manual installation:
-          ```bash
-          curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/fanfan-v${{ steps.version.outputs.version }}-macos.zip -o fanfan.zip
-          unzip fanfan.zip
-          rm -rf /Applications/fanfan.app
-          mv fanfan.app /Applications/
-
-          # Install the privileged SMC daemon as a LaunchDaemon
-          sudo mkdir -p /usr/local/libexec /Library/LaunchDaemons
-          sudo cp /Applications/fanfan.app/Contents/Resources/fanfan-smcd /usr/local/libexec/fanfan-smcd
-          sudo chown root:wheel /usr/local/libexec/fanfan-smcd
-          sudo chmod 755 /usr/local/libexec/fanfan-smcd
-          sudo cp /Applications/fanfan.app/Contents/Resources/com.hoobnn.fanfan.smcd.plist /Library/LaunchDaemons/
-          sudo chown root:wheel /Library/LaunchDaemons/com.hoobnn.fanfan.smcd.plist
-          sudo chmod 644 /Library/LaunchDaemons/com.hoobnn.fanfan.smcd.plist
-          sudo launchctl bootstrap system /Library/LaunchDaemons/com.hoobnn.fanfan.smcd.plist
-          sudo launchctl kickstart -k system/com.hoobnn.fanfan.smcd
-
-          open /Applications/fanfan.app
-          ```
-
-          ### 📋 Requirements
-          - macOS **26.0** or later (matches `MACOSX_DEPLOYMENT_TARGET` in the Xcode project)
-          - Intel or Apple Silicon
-
-          ### 🔐 SHA256 Checksums
-          ```
-          $(cat fanfan-v${{ steps.version.outputs.version }}-macos.zip.sha256)
-          $(cat fanfan-v${{ steps.version.outputs.version }}-macos.dmg.sha256)
-          ```
-
-          ### 📚 [Full Documentation](https://github.com/${{ github.repository }}/blob/main/docs/README.md)
+          cat > release_notes.md << EOF
+          ${CHANGELOG}
 
           ---
-          **⭐ Like fanfan? Star the repo!**
+
+          ### Installation
+
+          **Option 1: DMG (Recommended)**
+          1. Download and open \`fanfan-v${VERSION}-macos.dmg\`
+          2. Drag **fanfan.app** to /Applications/
+          3. Launch — it will prompt once to install the helper tool
+
+          **Option 2: One-liner**
+          \`\`\`bash
+          curl -fsSL https://raw.githubusercontent.com/hoobnn/fanfan/main/scripts/install.sh | bash
+          \`\`\`
+
+          ### Requirements
+          - macOS 26.0 or later · Apple Silicon or Intel
+
+          ### SHA256 Checksums
+          \`\`\`
+          ${ZIP_SHA}
+          ${DMG_SHA}
+          \`\`\`
           EOF
 
           echo "notes_file=release_notes.md" >> $GITHUB_OUTPUT
