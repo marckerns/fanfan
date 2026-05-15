@@ -72,13 +72,13 @@ jobs:
           security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep -q "$SIGN_IDENTITY"
           rm -f "$CERT_PATH"
 
-      - name: 🛠 Build smc-daemon
+      - name: 🛠 Build fanfan-smcd
         run: |
           set -euo pipefail
-          make -C tools/smc-daemon clean
-          make -C tools/smc-daemon
+          make -C tools/fanfan-smcd clean
+          make -C tools/fanfan-smcd
           # Refresh the bundled copy that Xcode picks up as a Resources file.
-          cp tools/smc-daemon/smc-daemon fanfan/Resources/smc-daemon
+          cp tools/fanfan-smcd/fanfan-smcd fanfan/Resources/fanfan-smcd
 
       - name: 🔨 Build fanfan
         run: |
@@ -112,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           APP="release/fanfan.app"
-          DAEMON="$APP/Contents/Resources/smc-daemon"
+          DAEMON="$APP/Contents/Resources/fanfan-smcd"
           ENTITLEMENTS="fanfan/Resources/fanfan.entitlements"
 
           if [ ! -f "$DAEMON" ]; then
@@ -248,14 +248,14 @@ jobs:
 
           # Install the privileged SMC daemon as a LaunchDaemon
           sudo mkdir -p /usr/local/libexec /Library/LaunchDaemons
-          sudo cp /Applications/fanfan.app/Contents/Resources/smc-daemon /usr/local/libexec/fanfan-smc-daemon
-          sudo chown root:wheel /usr/local/libexec/fanfan-smc-daemon
-          sudo chmod 755 /usr/local/libexec/fanfan-smc-daemon
-          sudo cp /Applications/fanfan.app/Contents/Resources/com.fanfan.smc-daemon.plist /Library/LaunchDaemons/
-          sudo chown root:wheel /Library/LaunchDaemons/com.fanfan.smc-daemon.plist
-          sudo chmod 644 /Library/LaunchDaemons/com.fanfan.smc-daemon.plist
-          sudo launchctl bootstrap system /Library/LaunchDaemons/com.fanfan.smc-daemon.plist
-          sudo launchctl kickstart -k system/com.fanfan.smc-daemon
+          sudo cp /Applications/fanfan.app/Contents/Resources/fanfan-smcd /usr/local/libexec/fanfan-smcd
+          sudo chown root:wheel /usr/local/libexec/fanfan-smcd
+          sudo chmod 755 /usr/local/libexec/fanfan-smcd
+          sudo cp /Applications/fanfan.app/Contents/Resources/com.hoobnn.fanfan.smcd.plist /Library/LaunchDaemons/
+          sudo chown root:wheel /Library/LaunchDaemons/com.hoobnn.fanfan.smcd.plist
+          sudo chmod 644 /Library/LaunchDaemons/com.hoobnn.fanfan.smcd.plist
+          sudo launchctl bootstrap system /Library/LaunchDaemons/com.hoobnn.fanfan.smcd.plist
+          sudo launchctl kickstart -k system/com.hoobnn.fanfan.smcd
 
           open /Applications/fanfan.app
           ```
