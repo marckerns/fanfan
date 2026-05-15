@@ -89,6 +89,12 @@ cp tools/fanfan-smcd/fanfan-smcd fanfan/Resources/fanfan-smcd
 
 Requires the `Developer ID Application: HAOBIN WU (8FUPL8QHFH)` certificate and a `notarytool` keychain profile named `fanfan-notarize` (override with `NOTARY_PROFILE=…`). Output lands in `releases/` as `.zip` + `.dmg` + `.sha256`. CI does the same pipeline on `v*` tags via `.github/workflows/release.yml`.
 
+### Release checklist (do this in order before pushing the tag)
+
+1. Update `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` in `fanfan.xcodeproj/project.pbxproj` (both Debug and Release configurations for the main app target).
+2. Add a new section to `CHANGELOG.md` for the version being released.
+3. Commit both files, then `git tag vX.Y.Z && git push && git push origin vX.Y.Z`.
+
 ## Commits — required format
 
 `husky` runs `commitlint` on every commit message. Header must match:
