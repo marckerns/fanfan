@@ -1,0 +1,17 @@
+/build/
+tools/smc-write/.build/
+tools/.build/
+
+# macOS
+.DS_Store
+
+# Xcode user data
+xcuserdata/
+
+# Local build and agent artifacts
+build/
+**/.build/
+.superpowers/
+
+# Node (commitlint tooling)
+node_modules/

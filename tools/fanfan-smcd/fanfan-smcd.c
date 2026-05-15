@@ -1,0 +1,351 @@
+/*
+ * fanfan privileged SMC daemon.
+ *
+ * Keeps a root-owned AppleSMC connection open and accepts a deliberately small
+ * local socket protocol:
+ *   SET <fan> <rpm>
+ *   AUTO <fan>
+ *   PING
+ */
+
+#include <errno.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/un.h>
+#include <unistd.h>
+#include <IOKit/IOKitLib.h>
+#include "smc.h"
+
+#define SOCKET_PATH "/var/run/fanfan-smcd.sock"
+#define MAX_FANS 8
+#define MIN_RPM 500
+#define MAX_RPM 8000
+
+static io_connect_t g_conn = 0;
+static int g_server_fd = -1;
+
+static UInt32 smc_strtoul(char *str, int size, int base)
+{
+    UInt32 total = 0;
+    for (int i = 0; i < size; i++) {
+        if (base == 16) {
+            total += str[i] << (size - 1 - i) * 8;
+        } else {
+            total += ((unsigned char)str[i] << (size - 1 - i) * 8);
+        }
+    }
+    return total;
+}
+
+static void smc_ultostr(char *str, UInt32 val)
+{
+    str[0] = '\0';
+    sprintf(str, "%c%c%c%c",
+            (unsigned int)val >> 24,
+            (unsigned int)val >> 16,
+            (unsigned int)val >> 8,
+            (unsigned int)val);
+}
+
+static kern_return_t smc_call(int index, SMCKeyData_t *input, SMCKeyData_t *output)
+{
+    size_t input_size = sizeof(SMCKeyData_t);
+    size_t output_size = sizeof(SMCKeyData_t);
+    return IOConnectCallStructMethod(g_conn, index, input, input_size, output, &output_size);
+}
+
+static kern_return_t smc_open(void)
+{
+    if (g_conn != 0) {
+        return kIOReturnSuccess;
+    }
+
+    io_iterator_t iterator = 0;
+    io_object_t device = 0;
+    kern_return_t result = IOServiceGetMatchingServices(kIOMainPortDefault,
+                                                        IOServiceMatching("AppleSMC"),
+                                                        &iterator);
+    if (result != kIOReturnSuccess) {
+        return result;
+    }
+
+    device = IOIteratorNext(iterator);
+    IOObjectRelease(iterator);
+    if (device == 0) {
+        return kIOReturnNotFound;
+    }
+
+    result = IOServiceOpen(device, mach_task_self(), 0, &g_conn);
+    IOObjectRelease(device);
+    return result;
+}
+
+static void smc_close(void)
+{
+    if (g_conn != 0) {
+        IOServiceClose(g_conn);
+        g_conn = 0;
+    }
+}
+
+static kern_return_t smc_get_key_info(UInt32 key, SMCKeyData_keyInfo_t *key_info)
+{
+    SMCKeyData_t input;
+    SMCKeyData_t output;
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+
+    input.key = key;
+    input.data8 = SMC_CMD_READ_KEYINFO;
+
+    kern_return_t result = smc_call(KERNEL_INDEX_SMC, &input, &output);
+    if (result == kIOReturnSuccess) {
+        *key_info = output.keyInfo;
+    }
+    return result;
+}
+
+static kern_return_t smc_read_key(UInt32Char_t key, SMCVal_t *val)
+{
+    SMCKeyData_t input;
+    SMCKeyData_t output;
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+    memset(val, 0, sizeof(*val));
+
+    input.key = smc_strtoul(key, 4, 16);
+    sprintf(val->key, "%s", key);
+
+    kern_return_t result = smc_get_key_info(input.key, &output.keyInfo);
+    if (result != kIOReturnSuccess) {
+        return result;
+    }
+
+    val->dataSize = output.keyInfo.dataSize;
+    smc_ultostr(val->dataType, output.keyInfo.dataType);
+    input.keyInfo.dataSize = val->dataSize;
+    input.data8 = SMC_CMD_READ_BYTES;
+
+    result = smc_call(KERNEL_INDEX_SMC, &input, &output);
+    if (result != kIOReturnSuccess) {
+        return result;
+    }
+
+    memcpy(val->bytes, output.bytes, sizeof(output.bytes));
+    return kIOReturnSuccess;
+}
+
+static kern_return_t smc_write_key(SMCVal_t write_val)
+{
+    SMCVal_t read_val;
+    kern_return_t result = smc_read_key(write_val.key, &read_val);
+    if (result != kIOReturnSuccess) {
+        return result;
+    }
+    if (read_val.dataSize != write_val.dataSize) {
+        return kIOReturnError;
+    }
+
+    SMCKeyData_t input;
+    SMCKeyData_t output;
+    memset(&input, 0, sizeof(input));
+    memset(&output, 0, sizeof(output));
+
+    input.key = smc_strtoul(write_val.key, 4, 16);
+    input.data8 = SMC_CMD_WRITE_BYTES;
+    input.keyInfo.dataSize = write_val.dataSize;
+    memcpy(input.bytes, write_val.bytes, sizeof(write_val.bytes));
+    return smc_call(KERNEL_INDEX_SMC, &input, &output);
+}
+
+static kern_return_t set_fan_mode(int fan, int mode)
+{
+    SMCVal_t val;
+    char key[5];
+    snprintf(key, sizeof(key), "F%dMd", fan);
+
+    kern_return_t result = smc_read_key(key, &val);
+    if (result != kIOReturnSuccess) {
+        return kIOReturnSuccess;
+    }
+
+    if (val.dataSize != 1) {
+        return kIOReturnError;
+    }
+
+    val.bytes[0] = (UInt8)mode;
+    snprintf(val.key, sizeof(val.key), "%s", key);
+    return smc_write_key(val);
+}
+
+static kern_return_t set_fan_speed(int fan, int rpm)
+{
+    kern_return_t result = set_fan_mode(fan, 1);
+    if (result != kIOReturnSuccess) {
+        return result;
+    }
+
+    SMCVal_t val;
+    char key[5];
+    snprintf(key, sizeof(key), "F%dTg", fan);
+
+    result = smc_read_key(key, &val);
+    if (result != kIOReturnSuccess) {
+        return result;
+    }
+
+    if (strcmp(val.dataType, DATATYPE_FLT) == 0 && val.dataSize == 4) {
+        float speed = (float)rpm;
+        memcpy(val.bytes, &speed, sizeof(speed));
+    } else if (strcmp(val.dataType, DATATYPE_FPE2) == 0 && val.dataSize == 2) {
+        UInt16 encoded = (UInt16)(rpm << 2);
+        val.bytes[0] = (encoded >> 8) & 0xFF;
+        val.bytes[1] = encoded & 0xFF;
+    } else {
+        return kIOReturnUnsupported;
+    }
+
+    snprintf(val.key, sizeof(val.key), "%s", key);
+    return smc_write_key(val);
+}
+
+static kern_return_t set_fan_auto(int fan)
+{
+    return set_fan_mode(fan, 0);
+}
+
+static int parse_int(const char *s, int *out)
+{
+    char *end = NULL;
+    long value = strtol(s, &end, 10);
+    if (s == end || *end != '\0' || value < INT32_MIN || value > INT32_MAX) {
+        return 0;
+    }
+    *out = (int)value;
+    return 1;
+}
+
+static void write_response(int fd, const char *message)
+{
+    (void)write(fd, message, strlen(message));
+}
+
+static void handle_client(int fd)
+{
+    char buffer[128];
+    ssize_t n = read(fd, buffer, sizeof(buffer) - 1);
+    if (n <= 0) {
+        return;
+    }
+    buffer[n] = '\0';
+    buffer[strcspn(buffer, "\r\n")] = '\0';
+
+    char *cmd = strtok(buffer, " ");
+    if (cmd == NULL) {
+        write_response(fd, "ERR empty\n");
+        return;
+    }
+
+    if (strcmp(cmd, "PING") == 0) {
+        write_response(fd, "OK pong\n");
+        return;
+    }
+
+    char *fan_s = strtok(NULL, " ");
+    int fan = -1;
+    if (fan_s == NULL || !parse_int(fan_s, &fan) || fan < 0 || fan >= MAX_FANS) {
+        write_response(fd, "ERR invalid-fan\n");
+        return;
+    }
+
+    kern_return_t result = kIOReturnError;
+    if (strcmp(cmd, "SET") == 0) {
+        char *rpm_s = strtok(NULL, " ");
+        int rpm = -1;
+        if (rpm_s == NULL || !parse_int(rpm_s, &rpm) || rpm < MIN_RPM || rpm > MAX_RPM) {
+            write_response(fd, "ERR invalid-rpm\n");
+            return;
+        }
+        result = set_fan_speed(fan, rpm);
+    } else if (strcmp(cmd, "AUTO") == 0) {
+        result = set_fan_auto(fan);
+    } else {
+        write_response(fd, "ERR unknown-command\n");
+        return;
+    }
+
+    if (result == kIOReturnSuccess) {
+        write_response(fd, "OK\n");
+    } else {
+        char response[64];
+        snprintf(response, sizeof(response), "ERR iokit-%08x\n", result);
+        write_response(fd, response);
+    }
+}
+
+static void cleanup(int sig)
+{
+    (void)sig;
+    if (g_server_fd >= 0) {
+        close(g_server_fd);
+    }
+    unlink(SOCKET_PATH);
+    smc_close();
+    exit(0);
+}
+
+int main(void)
+{
+    signal(SIGINT, cleanup);
+    signal(SIGTERM, cleanup);
+
+    kern_return_t result = smc_open();
+    if (result != kIOReturnSuccess) {
+        fprintf(stderr, "fanfan-smcd: cannot open SMC: %08x\n", result);
+        return 1;
+    }
+
+    unlink(SOCKET_PATH);
+    g_server_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (g_server_fd < 0) {
+        perror("socket");
+        cleanup(0);
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+
+    if (bind(g_server_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        perror("bind");
+        cleanup(0);
+    }
+    chmod(SOCKET_PATH, 0660);
+    chown(SOCKET_PATH, 0, 80); // root:admin
+
+    if (listen(g_server_fd, 16) < 0) {
+        perror("listen");
+        cleanup(0);
+    }
+
+    for (;;) {
+        int client_fd = accept(g_server_fd, NULL, NULL);
+        if (client_fd < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            perror("accept");
+            break;
+        }
+        handle_client(client_fd);
+        close(client_fd);
+    }
+
+    cleanup(0);
+    return 0;
+}

@@ -1,0 +1,228 @@
+//
+//  File: Theme.swift / 文件：Theme.swift
+//  Target: fanfan / 目标：fanfan
+//
+//  Created by haobin on 2026/5/15. / 创建者：haobin，日期：2026/5/15。
+//  Description: Refined design system and shared visual tokens. / 描述：精细化设计系统与共享视觉令牌。
+//
+
+import SwiftUI
+
+// MARK: - Temperature Level / 中文：温度等级
+
+enum TemperatureLevel {
+    case cool, normal, warm, hot, critical
+
+    static func of(_ temp: Double?) -> TemperatureLevel? {
+        guard let t = temp, t > 0 else { return nil }
+        if t < 50  { return .cool }
+        if t < 68  { return .normal }
+        if t < 80  { return .warm }
+        if t < 90  { return .hot }
+        return .critical
+    }
+
+    var label: String {
+        switch self {
+        case .cool:     return NSLocalizedString("temperature.cool",     comment: "")
+        case .normal:   return NSLocalizedString("temperature.normal",   comment: "")
+        case .warm:     return NSLocalizedString("temperature.warm",     comment: "")
+        case .hot:      return NSLocalizedString("temperature.hot",      comment: "")
+        case .critical: return NSLocalizedString("temperature.critical", comment: "")
+        }
+    }
+}
+
+// MARK: - Theme / 中文：主题
+
+struct Theme {
+
+    // ── Temperature accent (low chroma, harmonized lightness) ──────── / 中文：── 温度 强调色 (low chroma, harmonized lightness) ────────
+
+    /// Raw RGB components for a temperature level — the single source of truth / 中文：温度等级的原始 RGB 分量 — 颜色定义的唯一来源,
+    /// for both the discrete `accent(for:)` and the continuous `thermalColor`. / 中文：供离散的 `accent(for:)` 与连续的 `thermalColor` 共用.
+    private static func thermalRGB(for level: TemperatureLevel, scheme: ColorScheme) -> (Double, Double, Double) {
+        let dark = scheme == .dark
+        switch level {
+        case .cool:     return dark ? (0.46, 0.68, 0.90) : (0.20, 0.50, 0.74)
+        case .normal:   return dark ? (0.42, 0.78, 0.62) : (0.18, 0.58, 0.46)
+        case .warm:     return dark ? (0.92, 0.74, 0.36) : (0.74, 0.54, 0.18)
+        case .hot:      return dark ? (0.94, 0.58, 0.30) : (0.78, 0.42, 0.16)
+        case .critical: return dark ? (0.92, 0.42, 0.36) : (0.74, 0.22, 0.18)
+        }
+    }
+
+    static func accent(for level: TemperatureLevel?, scheme: ColorScheme) -> Color {
+        guard let level = level else { return text2(scheme) }
+        let rgb = thermalRGB(for: level, scheme: scheme)
+        return Color(red: rgb.0, green: rgb.1, blue: rgb.2)
+    }
+
+    static func accent(for temp: Double?, scheme: ColorScheme) -> Color {
+        accent(for: TemperatureLevel.of(temp), scheme: scheme)
+    }
+
+    /// Continuous thermal color — RGB-interpolates between the five level / 中文：连续温度色 — 在五个等级锚点 (cool→critical) 之间
+    /// anchors (cool→critical) so a temperature slider's tint glides smoothly / 中文：进行 RGB 插值，让温度滑杆的着色随值平滑滑动,
+    /// from blue to red as the value moves, without discrete level jumps. / 中文：从蓝平滑过渡到红，不再有等级跳变.
+    static func thermalColor(forTemperature temp: Double, scheme: ColorScheme) -> Color {
+        // Anchor each level at the midpoint of its threshold band so the / 中文：把每个等级锚定在其阈值带的中点，让
+        // five colors are evenly distributed across the realistic range. / 中文：五种颜色在真实温度区间内均匀分布.
+        let stops: [(Double, (Double, Double, Double))] = [
+            (40, thermalRGB(for: .cool,     scheme: scheme)),
+            (59, thermalRGB(for: .normal,   scheme: scheme)),
+            (74, thermalRGB(for: .warm,     scheme: scheme)),
+            (85, thermalRGB(for: .hot,      scheme: scheme)),
+            (95, thermalRGB(for: .critical, scheme: scheme)),
+        ]
+        if temp <= stops.first!.0 {
+            let c = stops.first!.1
+            return Color(red: c.0, green: c.1, blue: c.2)
+        }
+        if temp >= stops.last!.0 {
+            let c = stops.last!.1
+            return Color(red: c.0, green: c.1, blue: c.2)
+        }
+        for i in 0..<(stops.count - 1) {
+            let a = stops[i]
+            let b = stops[i + 1]
+            if temp >= a.0 && temp <= b.0 {
+                let t = (temp - a.0) / (b.0 - a.0)
+                let r  = a.1.0 * (1 - t) + b.1.0 * t
+                let g  = a.1.1 * (1 - t) + b.1.1 * t
+                let bl = a.1.2 * (1 - t) + b.1.2 * t
+                return Color(red: r, green: g, blue: bl)
+            }
+        }
+        let c = stops.last!.1
+        return Color(red: c.0, green: c.1, blue: c.2)
+    }
+
+    // ── Text (monochrome) ───────────────────────────────────────────── / 中文：── Text (单色) ─────────────────────────────────────────────
+
+    static func text1(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.92) : Color.black.opacity(0.88)
+    }
+    static func text2(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.58) : Color.black.opacity(0.56)
+    }
+    static func text3(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.36) : Color.black.opacity(0.36)
+    }
+    static func text4(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.20) : Color.black.opacity(0.20)
+    }
+
+    // ── Fills & separators (monochrome) ─────────────────────────────── / 中文：── Fills & separators (单色) ───────────────────────────────
+
+    static func fill2(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
+    }
+    static func separator(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.08)
+    }
+
+    // ── Status colors (used sparingly) ──────────────────────────────── / 中文：── 状态 颜色s (used sparingly) ────────────────────────────────
+
+    static func success(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.40, green: 0.78, blue: 0.46)
+                        : Color(red: 0.20, green: 0.62, blue: 0.30)
+    }
+    static func danger(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color(red: 0.92, green: 0.42, blue: 0.36)
+                        : Color(red: 0.74, green: 0.22, blue: 0.18)
+    }
+
+    // ── Card surface ────────────────────────────────────────────────── / 中文：── 卡片 surface ──────────────────────────────────────────────────
+
+    static func cardBg(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.62)
+    }
+
+    static func bgPrimary(_ scheme: ColorScheme) -> AnyShapeStyle {
+        AnyShapeStyle(.windowBackground)
+    }
+
+    /// Hairline edge for cards — lit from the top, fading to a dark base so / 中文：Hairline edge for 卡片s — lit from the top, fading to a dark base so
+    /// surfaces read as machined panels rather than flat fills. / 中文：surfaces 读取 as machined panels rather than flat fills.
+    static func cardStroke(_ scheme: ColorScheme) -> LinearGradient {
+        scheme == .dark
+            ? LinearGradient(colors: [Color.white.opacity(0.16),
+                                      Color.white.opacity(0.035)],
+                             startPoint: .top, endPoint: .bottom)
+            : LinearGradient(colors: [Color.white.opacity(0.95),
+                                      Color.black.opacity(0.055)],
+                             startPoint: .top, endPoint: .bottom)
+    }
+
+    /// Soft ambient elevation under cards. / 中文：Soft ambient elevation under 卡片s.
+    static func cardShadow(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? Color.black.opacity(0.40) : Color.black.opacity(0.10)
+    }
+
+    /// Subtle vertical gradient for large display numbers — gives the hero / 中文：Subtle vertical 渐变 for large display numbers — gives the hero
+    /// figures a touch of depth without breaking the monochrome rule. / 中文：figures a touch of depth without breaking the 单色 rule.
+    static func heroText(_ scheme: ColorScheme) -> LinearGradient {
+        let top = scheme == .dark ? Color.white.opacity(0.98) : Color.black.opacity(0.92)
+        let bot = scheme == .dark ? Color.white.opacity(0.72) : Color.black.opacity(0.64)
+        return LinearGradient(colors: [top, bot], startPoint: .top, endPoint: .bottom)
+    }
+
+    // ── Typography ──────────────────────────────────────────────────── / 中文：── 字体排版 ────────────────────────────────────────────────────
+
+    /// SF Pro Rounded for numbers — tabular figures. / 中文：数字使用 SF Pro Rounded，并启用等宽数字。
+    static func num(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .rounded).monospacedDigit()
+    }
+
+    /// Small uppercase label. / 中文：小号大写标签。
+    static func label(_ size: CGFloat = 10.5, weight: Font.Weight = .semibold) -> Font {
+        .system(size: size, weight: weight, design: .default)
+    }
+
+    /// Light display number — used for the big hero temperature. / 中文：Light display number — used for the big hero 温度.
+    static func display(_ size: CGFloat, weight: Font.Weight = .thin) -> Font {
+        .system(size: size, weight: weight, design: .default).monospacedDigit()
+    }
+
+    // ── Slider tints ────────────────────────────────────────────────── / 中文：── 滑杆着色 ──────────────────────────────────────────────────
+
+    /// Soft tint for non-thermal sliders (rpm, intervals, gains) — avoids the / 中文：非温度类滑杆 (转速、间隔、增益) 的温和色 — 避免
+    /// pure-black look without competing with the thermal range. / 中文：纯黑外观，同时不与温度色范围争夺注意力.
+    static func sliderTint(_ scheme: ColorScheme) -> Color {
+        scheme == .dark
+            ? Color(red: 0.62, green: 0.66, blue: 0.72)
+            : Color(red: 0.42, green: 0.46, blue: 0.52)
+    }
+}
+
+// MARK: - Card surface modifier / 中文：卡片表面修饰器
+
+extension Theme {
+    /// Refined card surface: monochrome fill, a hairline lit edge, and a soft / 中文：Refined 卡片 surface: 单色 fill, a hairline lit edge, and a soft
+    /// ambient shadow. Centralizes the look so every card stays consistent. / 中文：ambient shadow. Centralizes the look so every 卡片 stays consistent.
+    struct CardSurface: ViewModifier {
+        let scheme: ColorScheme
+        let cornerRadius: CGFloat
+
+        func body(content: Content) -> some View {
+            let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            return content
+                .background(Theme.cardBg(scheme), in: shape)
+                .overlay {
+                    shape.strokeBorder(Theme.cardStroke(scheme), lineWidth: 0.75)
+                }
+                .clipShape(shape)
+                .shadow(color: Theme.cardShadow(scheme),
+                        radius: scheme == .dark ? 7 : 5,
+                        x: 0, y: scheme == .dark ? 3 : 2)
+        }
+    }
+}
+
+extension View {
+    /// Apply the standard refined card surface. / 中文：Apply the standard refined 卡片 surface.
+    func themedCard(_ scheme: ColorScheme, cornerRadius: CGFloat = 12) -> some View {
+        modifier(Theme.CardSurface(scheme: scheme, cornerRadius: cornerRadius))
+    }
+}

@@ -1,0 +1,96 @@
+//
+//  File: PermissionsManager.swift / 文件：PermissionsManager.swift
+//  Target: fanfan / 目标：fanfan
+//
+//  Created by haobin on 2026/5/15. / 创建者：haobin，日期：2026/5/15。
+//  Description: Privileged helper installation and access management. / 描述：特权辅助工具安装与访问管理。
+//
+
+import Foundation
+import Security
+import AppKit
+import Combine
+
+class PermissionsManager: ObservableObject {
+    static let shared = PermissionsManager()
+    
+    @Published var isHelperInstalled = false
+    
+    private let daemonPath = "/usr/local/libexec/fanfan-smcd"
+    private let daemonPlistPath = "/Library/LaunchDaemons/com.hoobnn.fanfan.smcd.plist"
+    
+    private init() {
+        checkInstallation()
+    }
+    
+    func checkInstallation() {
+        // Run on background thread / 中文：在后台线程运行
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            let fileManager = FileManager.default
+            let daemonReady = SMCDaemonClient.ping()
+            let daemonInstalled = fileManager.fileExists(atPath: self.daemonPath)
+                && fileManager.fileExists(atPath: self.daemonPlistPath)
+            
+            if !daemonReady && !daemonInstalled {
+                DispatchQueue.main.async { self.isHelperInstalled = false }
+                return
+            }
+            
+            // If the daemon is still booting, the first write path will retry the / 中文：If the 守护进程 is still booting, the first 写入 path will retry the
+            // socket and then fall back to the legacy helper. / 中文：socket and then fall back to the legacy 辅助工具.
+            DispatchQueue.main.async {
+                self.isHelperInstalled = true
+            }
+        }
+    }
+    
+    private func verifySudoAccess() -> Bool {
+        return SMCDaemonClient.ping()
+            || FileManager.default.fileExists(atPath: daemonPath)
+    }
+    
+    func installHelper(completion: @escaping (Bool, String?) -> Void) {
+        // 1. Locate privileged tools in the App Bundle / 中文：1. 在 App Bundle 中定位特权工具
+        guard let bundledDaemonURL = Bundle.main.url(forResource: "fanfan-smcd", withExtension: nil) else {
+            completion(false, "App Bundle missing fanfan-smcd. Re-build app.")
+            return
+        }
+        guard let bundledPlistURL = Bundle.main.url(forResource: "com.hoobnn.fanfan.smcd", withExtension: "plist") else {
+            completion(false, "App Bundle missing daemon plist. Re-build app.")
+            return
+        }
+        
+        let bundledDaemonPath = bundledDaemonURL.path
+        let bundledPlistPath = bundledPlistURL.path
+        
+        // 2. Construct the installation script / 中文：2. 构造安装脚本
+        // We handle everything in one sudo shell script for atomicity / 中文：通过一个 sudo shell 脚本完成全部操作以保证原子性
+        let script = """
+        do shell script "mkdir -p /usr/local/libexec /Library/LaunchDaemons && cp -f '\(bundledDaemonPath)' '\(daemonPath)' && chown root:wheel '\(daemonPath)' && chmod 755 '\(daemonPath)' && cp -f '\(bundledPlistPath)' '\(daemonPlistPath)' && chown root:wheel '\(daemonPlistPath)' && chmod 644 '\(daemonPlistPath)' && (/bin/launchctl bootout system '\(daemonPlistPath)' >/dev/null 2>&1 || true) && /bin/launchctl bootstrap system '\(daemonPlistPath)' && /bin/launchctl kickstart -k system/com.hoobnn.fanfan.smcd" with administrator privileges
+        """
+        
+        // 3. Execute / 中文：3. 执行
+        DispatchQueue.global(qos: .userInitiated).async {
+             var error: NSDictionary?
+             if let scriptObject = NSAppleScript(source: script) {
+                 _ = scriptObject.executeAndReturnError(&error)
+                 
+                 DispatchQueue.main.async {
+                     if let error = error {
+                         let msg = error["NSAppleScriptErrorMessage"] as? String ?? "Unknown error"
+                         completion(false, msg)
+                     } else {
+                         self.checkInstallation() // Refresh state
+                         completion(true, nil)
+                     }
+                 }
+             } else {
+                 DispatchQueue.main.async {
+                     completion(false, "Failed to create installation script")
+                 }
+             }
+        }
+    }
+}

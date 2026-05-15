@@ -1,0 +1,121 @@
+//
+//  File: FanControlTests.swift / 文件：FanControlTests.swift
+//  Target: fanfanTests / 目标：fanfanTests
+//
+//  Created by haobin on 2026/5/15. / 创建者：haobin，日期：2026/5/15。
+//  Description: Unit tests for fan control behavior. / 描述：风扇控制行为的单元测试。
+//
+
+import XCTest
+@testable import fan
+
+@MainActor
+final class FanControlTests: XCTestCase {
+    
+    func testControlModeEnum() {
+        XCTAssertEqual(ControlMode.manual, ControlMode.manual)
+        XCTAssertEqual(ControlMode.automatic, ControlMode.automatic)
+        XCTAssertNotEqual(ControlMode.manual, ControlMode.automatic)
+    }
+    
+    func testFanControllerInitialization() {
+        let monitor = SystemMonitor()
+        let controller = FanController(systemMonitor: monitor)
+        
+        XCTAssertEqual(controller.mode, .manual)
+        XCTAssertGreaterThanOrEqual(controller.manualSpeed, FanRPMBounds.absoluteWriteMinRPM)
+        XCTAssertLessThanOrEqual(controller.manualSpeed, FanRPMBounds.absoluteWriteMaxRPM)
+    }
+    
+    func testFanControllerManualSpeed() {
+        let monitor = SystemMonitor()
+        let controller = FanController(systemMonitor: monitor)
+        
+        controller.setManualSpeed(3000)
+        XCTAssertEqual(controller.manualSpeed, 3000)
+        
+        // Test clamping (no SMC data yet → unified limits fall back to `FanRPMBounds`) / 中文：测试夹取逻辑（尚无 SMC 数据时，统一限制回退到 `FanRPMBounds`）
+        controller.setManualSpeed(10000)
+        XCTAssertLessThanOrEqual(controller.manualSpeed, FanRPMBounds.fallbackMaxWhenSMCUnreadable)
+        
+        controller.setManualSpeed(500)
+        XCTAssertGreaterThanOrEqual(controller.manualSpeed, FanRPMBounds.fallbackMinWhenSMCUnreadable)
+    }
+    
+    func testFanControllerModeSwitch() {
+        let monitor = SystemMonitor()
+        let controller = FanController(systemMonitor: monitor)
+        
+        XCTAssertEqual(controller.mode, .manual)
+        
+        controller.setMode(.automatic)
+        XCTAssertEqual(controller.mode, .automatic)
+        
+        controller.setMode(.manual)
+        XCTAssertEqual(controller.mode, .manual)
+    }
+    
+    func testUserDefaultsManager() {
+        let manager = UserDefaultsManager.shared
+        
+        // Test control mode / 中文：测试控制模式
+        manager.controlMode = .automatic
+        XCTAssertEqual(manager.controlMode, .automatic)
+        
+        manager.controlMode = .manual
+        XCTAssertEqual(manager.controlMode, .manual)
+        
+        // Test manual speed / 中文：测试手动转速
+        manager.manualFanSpeed = 2500
+        XCTAssertEqual(manager.manualFanSpeed, 2500)
+        
+        // Test auto threshold / 中文：测试自动阈值
+        manager.autoThreshold = 65.0
+        XCTAssertEqual(manager.autoThreshold, 65.0)
+        
+        // Test auto max speed / 中文：测试自动最大转速
+        manager.autoMaxSpeed = 5000
+        XCTAssertEqual(manager.autoMaxSpeed, 5000)
+    }
+    
+    func testFanControlViewModelInitialization() {
+        let viewModel = FanControlViewModel()
+        
+        XCTAssertNotNil(viewModel)
+        XCTAssertEqual(viewModel.controlMode, .automatic)
+        XCTAssertEqual(viewModel.fanSpeeds.count, 0)
+    }
+    
+    func testTemperatureLevelClassification() {
+        // No / invalid temperature → nil / 中文：无温度或温度无效时返回 nil
+        XCTAssertNil(TemperatureLevel.of(nil))
+        XCTAssertNil(TemperatureLevel.of(0))
+
+        // Cool (< 50) / 中文：偏凉（< 50）
+        XCTAssertEqual(TemperatureLevel.of(45.0), .cool)
+
+        // Normal (50–68) / 中文：正常（50–68）
+        XCTAssertEqual(TemperatureLevel.of(65.0), .normal)
+
+        // Warm (68–80) / 中文：偏热（68–80）
+        XCTAssertEqual(TemperatureLevel.of(75.0), .warm)
+
+        // Hot (80–90) / 中文：高温（80–90）
+        XCTAssertEqual(TemperatureLevel.of(85.0), .hot)
+
+        // Critical (>= 90) / 中文：严重高温（>= 90）
+        XCTAssertEqual(TemperatureLevel.of(100.0), .critical)
+    }
+    
+    func testMaxTemperatureCalculation() {
+        let viewModel = FanControlViewModel()
+        
+        viewModel.cpuTemperature = 50.0
+        viewModel.gpuTemperature = 60.0
+        XCTAssertEqual(viewModel.getMaxTemperature(), 60.0)
+        
+        viewModel.cpuTemperature = 70.0
+        viewModel.gpuTemperature = 65.0
+        XCTAssertEqual(viewModel.getMaxTemperature(), 70.0)
+    }
+}

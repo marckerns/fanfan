@@ -1,0 +1,183 @@
+/* Settings View */
+"settings.title" = "Settings";
+"settings.close" = "Close Settings";
+"settings.changes_apply" = "Changes apply immediately";
+"settings.fanfan_title" = "fanfan Settings";
+"settings.customize" = "Customize your fan control experience";
+"settings.close_shortcut" = "Close (Cmd+W)";
+"settings.all_changes_apply" = "All changes apply immediately without restarting the app";
+
+/* Settings Sections */
+"settings.section.menu_bar" = "Menu Bar";
+"settings.section.monitoring" = "Monitoring & Alerts";
+"settings.section.general" = "General";
+"settings.section.advanced_pid" = "Advanced PID Tuning";
+
+"settings.pid_override" = "Custom Gains";
+"settings.pid_override_desc" = "Off uses formula derived from Response level";
+"settings.pid_kp" = "Kp Proportional";
+"settings.pid_kp_desc" = "RPM contributed per °C of error";
+"settings.pid_ki" = "Ki Integral";
+"settings.pid_ki_desc" = "How fast to remove steady-state offset";
+"settings.pid_kd" = "Kd Derivative";
+"settings.pid_kd_desc" = "Predictive response to temperature trend";
+"settings.pid_reset" = "Reset to Defaults";
+
+/* Settings Items */
+"settings.launch_at_login" = "Launch at Login";
+"settings.launch_at_login_desc" = "Automatically start the app when you log in";
+"settings.menu_bar_display" = "Menu Bar Display";
+"settings.menu_bar_display_desc" = "What information to show in the status bar";
+"settings.monitoring_interval" = "Monitoring Interval";
+"settings.monitoring_interval_desc" = "How often to check temperatures (seconds)";
+"settings.high_temp_alert" = "High Temp Alert";
+"settings.high_temp_alert_desc" = "Alert threshold temperature (°C)";
+"settings.notifications" = "Notifications";
+"settings.notifications_desc" = "Show alerts for high temperature events";
+"settings.auto_mode_switching" = "Auto Mode Switching";
+"settings.auto_mode_switching_desc" = "Switch to automatic mode on high temps";
+
+/* Display Mode Options */
+"settings.display_mode.none" = "None";
+"settings.display_mode.temperature" = "Temperature";
+"settings.display_mode.power" = "Power Usage";
+"settings.display_mode.fan_speed" = "Fan Speed %";
+
+/* Popover View */
+"popover.title" = "Fan Control";
+"popover.settings" = "Settings";
+"popover.quit_app" = "Quit App";
+
+/* Quit Confirmation */
+"popover.quit_confirm.title" = "Quit Fan Control?";
+"popover.quit_confirm.cancel" = "Cancel";
+"popover.quit_confirm.quit" = "Quit";
+"popover.quit_confirm.message" = "Fans will be set to automatic mode before quitting.";
+
+/* Helper Installation */
+"popover.helper_required" = "Helper Tool Required";
+"popover.helper_required_desc" = "To control fans without constant password prompts, a helper tool must be installed.";
+"popover.install_helper" = "Install Helper";
+"popover.helper_location" = "Helper is installed to /usr/local/bin";
+
+/* Access Permissions */
+"popover.system_access_required" = "System Access Required";
+"popover.system_access_desc" = "The app needs to access the System Management Controller (SMC) to read temperatures.";
+"popover.no_temperature_data" = "No Temperature Data";
+"popover.no_temperature_data_desc" = "SMC connected but no temperature readings available. This may happen on some Mac models.";
+
+/* Auto Mode Settings */
+"popover.threshold" = "Target Temp";
+"popover.max_speed" = "Max Speed";
+"popover.response" = "Response";
+
+/* Response Levels */
+"popover.response.min_override" = "Min Override";
+"popover.response.quiet" = "Quiet";
+"popover.response.balanced" = "Balanced";
+"popover.response.auto" = "Auto";
+"popover.response.performance" = "Performance";
+"popover.response.aggressive" = "Aggressive";
+"popover.response.max_override" = "Max Override";
+
+/* Control Modes */
+"popover.mode.manual" = "Manual";
+"popover.mode.auto" = "Auto";
+"popover.mode.system" = "System";
+"popover.startup" = "Startup?";
+"popover.startup_help" = "Launch at Login";
+
+/* Helper */
+"popover.install_failed" = "Installation failed";
+
+/* Battery Info */
+"popover.battery" = "Battery";
+"popover.battery.health" = "Health";
+"popover.battery.cycles" = "Cycles";
+"popover.battery.status" = "Status";
+"popover.battery.temp" = "Temp";
+"popover.battery.voltage" = "Voltage";
+"popover.battery.power" = "Power";
+"popover.battery.capacity" = "Capacity";
+"popover.battery.source" = "Source";
+"popover.battery.full_in" = "Full in";
+"popover.battery.left" = "Left";
+
+/* System Info */
+"popover.system" = "System";
+"popover.system.cpu" = "CPU";
+"popover.system.gpu" = "GPU";
+"popover.system.fans" = "Fans";
+"popover.system.rpm" = "RPM";
+"popover.system.fan_limits" = "Fan limits";
+"popover.system.fan_range" = "Fan %d: %d–%d RPM";
+"popover.system.mode" = "Mode";
+
+/* Power Status */
+"popover.power" = "Power";
+"popover.power.charging" = "Charging";
+"popover.power.plugged_in" = "Plugged In";
+"popover.power.battery" = "Battery";
+
+/* Fan Speed View */
+"fan.avg_rpm" = "avg RPM";
+"fan.speed" = "Fan Speed";
+"fan.count_singular" = "%d fan";
+"fan.count_plural" = "%d fans";
+"fan.separate_targets" = "Separate targets per fan";
+"fan.target" = "Target: %d RPM";
+"fan.number" = "Fan %d";
+"fan.current_rpm" = "%d RPM";
+"fan.automatic_control" = "Automatic Control";
+"fan.automatic_desc" = "Speed adjusts with temperature";
+
+/* Tab Bar */
+"tab.overview" = "Overview";
+"tab.sensors" = "Sensors";
+"tab.fans" = "Fans";
+
+/* Sensors */
+"sensors.none" = "No sensors detected";
+"sensors.fan_details" = "Fan Details";
+"sensors.fan" = "Fan";
+
+/* Temperature Status */
+"temperature.cool" = "Cool";
+"temperature.normal" = "Normal";
+"temperature.warm" = "Warm";
+"temperature.hot" = "Hot!";
+"temperature.critical" = "Critical!";
+"temperature.no_data" = "No data";
+
+/* Alerts */
+"alert.high_temp.title" = "High Temperature Alert";
+"alert.high_temp.subtitle" = "CPU temperature: %.1f°C";
+"alert.high_temp.message" = "Consider switching to automatic fan control or check your system.";
+
+/* App */
+"app.title" = "fanfan - Fan Control";
+"app.settings_title" = "fanfan Settings";
+
+/* Hero Card */
+"hero.max_temp" = "MAX TEMP";
+"hero.unit.load" = "% load";
+"hero.unit.battery" = "% bat";
+
+/* Temperature Curve */
+"curve.title" = "TEMPERATURE · 60S";
+
+/* Micro Metric Cards */
+"metric.battery" = "Bat";
+
+/* Controls Card */
+"controls.header" = "%@  CONTROL";
+
+/* Sensor Categories */
+"sensor.category.cpu" = "CPU";
+"sensor.category.gpu" = "GPU";
+"sensor.category.memory" = "Memory";
+"sensor.category.storage" = "Storage";
+"sensor.category.battery" = "Battery";
+"sensor.category.system" = "System";
+"sensor.category.ambient" = "Ambient";
+"sensor.generic" = "%@ Sensor";
