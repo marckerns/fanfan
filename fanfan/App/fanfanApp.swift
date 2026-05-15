@@ -15,10 +15,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var iconUpdateTimer: Timer?
     private var displayModeObserver: NSObjectProtocol?
     
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // Hide dock icon - MUST be called early / 中文：隐藏 Dock 图标，必须尽早调用
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // Hide dock icon as early as possible to minimize the brief Dock flash
+        // that occurs because LSUIElement is NO (so the app shows in Launchpad).
+        // 中文：尽早隐藏 Dock 图标，减少因 LSUIElement=NO（为了出现在启动台）
+        // 而在 Dock 里短暂闪现图标的时间。
         NSApp.setActivationPolicy(.accessory)
-        
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
         // Initialize components immediately / 中文：立即初始化组件
         setupApplication()
     }
@@ -50,8 +55,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self,
                   let statusBarManager = self.statusBarManager else { return }
             
-            let popoverView = PopoverView(viewModel: self.viewModel, statusBarManager: statusBarManager)
-            statusBarManager.setPopoverContent(popoverView)
+            let viewModel = self.viewModel
+            statusBarManager.setPopoverContent { [weak statusBarManager] in
+                PopoverView(viewModel: viewModel, statusBarManager: statusBarManager)
+            }
             
             // Initialize monitoring / 中文：初始化监控
             self.initializeMonitoring()

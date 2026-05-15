@@ -188,11 +188,23 @@ class StatusBarManager: NSObject, ObservableObject {
         return p
     }
     
-    func setPopoverContent<Content: View>(_ content: Content) {
+    /// Store a factory for the popover's SwiftUI tree instead of materializing / 中文：存储 弹出窗口 SwiftUI 视图树的工厂，而不是立即实例化，
+    /// it eagerly. The tree contains `TimelineView(.animation)` (`FanBladeView`) / 中文：因为该视图树包含 `TimelineView(.animation)`（`FanBladeView`），
+    /// which would otherwise tick at display-refresh rate as long as the / 中文：只要 `NSHostingController` 还活着，它就会按显示器刷新率持续 tick，
+    /// `NSHostingController` is alive — burning ~40% CPU with the popover / 中文：在 弹出窗口 仅是视觉上关闭的情况下也是如此，
+    /// closed. We mount the controller in `togglePopover` and tear it down in / 中文：曾经导致约 40% 主线程 CPU 占用。这里改为在 `togglePopover` 中挂载，
+    /// `popoverDidClose` so the SwiftUI graph only exists while visible. / 中文：在 `popoverDidClose` 中拆除，使 SwiftUI 视图树仅在可见期间存在。
+    func setPopoverContent<Content: View>(_ builder: @escaping () -> Content) {
         DispatchQueue.main.async { [weak self] in
-            self?.popover?.contentViewController = NSHostingController(rootView: content)
+            self?.popoverContentMounter = { [weak self] in
+                guard let popover = self?.popover,
+                      popover.contentViewController == nil else { return }
+                popover.contentViewController = NSHostingController(rootView: builder())
+            }
         }
     }
+
+    private var popoverContentMounter: (() -> Void)?
     
     func updateIcon(fanSpeeds: [Int], fanMinSpeeds: [Int], fanMaxSpeeds: [Int], temperature: Double?, powerWatts: Double? = nil) {
         DispatchQueue.main.async { [weak self] in
@@ -433,6 +445,7 @@ class StatusBarManager: NSObject, ObservableObject {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            popoverContentMounter?()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
@@ -462,6 +475,10 @@ extension StatusBarManager: NSPopoverDelegate {
 
     func popoverDidClose(_ notification: Notification) {
         suppressIconAnimation = false
+        // Tear down the hosted SwiftUI tree so its `TimelineView(.animation)` / 中文：拆除挂载的 SwiftUI 视图树，使其内部的 `TimelineView(.animation)`
+        // stops ticking at display refresh while hidden. The next show re-builds / 中文：在隐藏期间不再按显示器刷新率 tick。下次显示时通过工厂闭包
+        // it via the stored factory. / 中文：重新构建。
+        popover?.contentViewController = nil
         // Resume spinning at whatever speed the latest sample implies. / 中文：Resume spinning at whatever speed the latest 采样 implies.
         updateAnimationSpeed()
     }
