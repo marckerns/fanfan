@@ -6,6 +6,7 @@
 //  Description: Settings window UI. / 描述：设置窗口界面。
 //
 
+import AppKit
 import SwiftUI
 
 enum StatusBarDisplayMode: String, CaseIterable {
@@ -34,6 +35,13 @@ struct SettingsView: View {
     @AppStorage("highTempAlert")          private var highTempAlert = 85.0
     @AppStorage("autoSwitchMode")         private var autoSwitchMode = false
 
+    @StateObject private var updateChecker = UpdateChecker()
+
+    private var availableRelease: UpdateChecker.Release? {
+        if case .available(let r) = updateChecker.state { return r }
+        return nil
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
@@ -41,6 +49,7 @@ struct SettingsView: View {
                 monitoringSection
                 pidAdvancedSection
                 generalSection
+                aboutSection
             }
             .padding(14)
         }
@@ -52,6 +61,23 @@ struct SettingsView: View {
                idealHeight: SettingsWindowLayout.idealSize.height,
                maxHeight: SettingsWindowLayout.maxSize.height)
         .background(Theme.bgPrimary(scheme))
+        .alert(
+            NSLocalizedString("update.alert.title", comment: ""),
+            isPresented: Binding(
+                get: { availableRelease != nil },
+                set: { if !$0 { updateChecker.dismissAvailable() } }
+            ),
+            presenting: availableRelease,
+            actions: { release in
+                Button(NSLocalizedString("update.alert.download", comment: "")) {
+                    NSWorkspace.shared.open(release.htmlURL)
+                }
+                Button(NSLocalizedString("update.alert.later", comment: ""), role: .cancel) {}
+            },
+            message: { release in
+                Text(updateAlertMessage(for: release))
+            }
+        )
     }
 
     // MARK: - Sections / 中文：分区
@@ -321,6 +347,76 @@ struct SettingsView: View {
                     }
             }
         }
+    }
+
+    // MARK: - About / 中文：关于
+
+    private var aboutSection: some View {
+        SettingsSection(NSLocalizedString("settings.section.about", comment: ""), scheme: scheme) {
+            VStack(spacing: 0) {
+                SettingRow(
+                    icon: "info.circle",
+                    title: NSLocalizedString("settings.version", comment: ""),
+                    desc: NSLocalizedString("settings.version_desc", comment: ""),
+                    scheme: scheme
+                ) {
+                    Text(versionDisplay)
+                        .font(Theme.num(11.5, weight: .semibold))
+                        .foregroundColor(Theme.text2(scheme))
+                }
+
+                rowDivider
+
+                SettingRow(
+                    icon: "arrow.triangle.2.circlepath",
+                    title: NSLocalizedString("settings.check_updates", comment: ""),
+                    desc: checkUpdatesDescription,
+                    scheme: scheme
+                ) {
+                    Button(action: { Task { await updateChecker.check() } }) {
+                        if updateChecker.state == .checking {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text(NSLocalizedString("settings.check_updates.button", comment: ""))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(updateChecker.state == .checking)
+                }
+            }
+        }
+    }
+
+    private var versionDisplay: String {
+        let v = updateChecker.currentVersion
+        let b = updateChecker.currentBuild
+        return b.isEmpty ? v : "\(v) (\(b))"
+    }
+
+    private var checkUpdatesDescription: String {
+        switch updateChecker.state {
+        case .checking:
+            return NSLocalizedString("settings.check_updates.checking", comment: "")
+        case .upToDate:
+            return NSLocalizedString("settings.check_updates.up_to_date", comment: "")
+        case .failed(let msg):
+            return String(format: NSLocalizedString("settings.check_updates.failed_format", comment: ""), msg)
+        case .idle, .available:
+            return NSLocalizedString("settings.check_updates_desc", comment: "")
+        }
+    }
+
+    private func updateAlertMessage(for release: UpdateChecker.Release) -> String {
+        let header = String(
+            format: NSLocalizedString("update.alert.message_header_format", comment: ""),
+            release.version,
+            updateChecker.currentVersion
+        )
+        let trimmed = release.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return header }
+        let capped = trimmed.count > 700 ? String(trimmed.prefix(700)) + "…" : trimmed
+        return "\(header)\n\n\(capped)"
     }
 
     /// Hairline between rows, inset past the icon column. / 中文：Hairline between 行s, inset past the 图标 column.
