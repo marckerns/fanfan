@@ -248,6 +248,20 @@ class SystemMonitor: ObservableObject {
     private var discoveredGpuKeys: [String] = []
     private var hasDoneFullScan = false
 
+    /// Tiered polling: the full sensor list (`scanAllSensors`) is expensive — / 中文：分级采样：完整传感器列表（`scanAllSensors`）开销较大——
+    /// 30+ IOKit round-trips on Macs with rich SMC catalogues. The fast tier / 中文：在 SMC 传感器丰富的机型上要做 30+ 次 IOKit 往返。快速档
+    /// (CPU/GPU temp, fan RPM) runs every `monitoringInterval`; the slow tier / 中文：（CPU/GPU 温度、风扇转速）按 `monitoringInterval` 跑；慢速档
+    /// (full sensor scan) runs at most every `slowSensorScanInterval`. / 中文：（完整传感器扫描）最多每 `slowSensorScanInterval` 一次。
+    private var lastSensorScanTime: Date?
+    private var slowSensorScanInterval: TimeInterval {
+        max(6.0, monitoringInterval * 3)
+    }
+
+    /// Fan `Mn` / `Mx` SMC keys are hardware-fixed limits; reading them every / 中文：风扇 `Mn` / `Mx` SMC 键是硬件固化上下限；每个 tick 重读
+    /// tick wastes IOKit traffic. Cache once per fan-count and invalidate only / 中文：浪费 IOKit。按风扇数缓存一次，只有风扇数变化时
+    /// when the fan count changes (e.g. hot-pluggable behavior on some chassis). / 中文：才失效（例如某些机型支持热插拔风扇）。
+    private var cachedFanLimits: (count: Int, mins: [Int], maxes: [Int])?
+
     // Keys that have a curated (friendly, localizable) name in sensorKeyMap. / 中文：在 sensorKeyMap 中有精选友好且可本地化名称的键。
     private lazy var curatedSensorKeys: Set<String> = Set(sensorKeyMap.map { $0.0 })
 
@@ -450,59 +464,32 @@ class SystemMonitor: ObservableObject {
             // before the first temperature read. / 中文：before the first 温度 读取.
             self.ensureFullScan()
 
-            // Read temperatures with key caching / 中文：使用键缓存读取温度
+            // Fast tier: CPU / GPU temperature + fan RPM, every tick. / 中文：快速档：每个 tick 都读 CPU / GPU 温度 + 风扇转速。
             let rawCpuTemp = self.readCpuTemperature()
             let rawGpuTemp = self.readGpuTemperature()
-
-            // Apply EMA smoothing / 中文：应用 EMA 平滑
             let cpuTemp = self.smoothTemperature(raw: rawCpuTemp, smoothed: &self.smoothedCpuTemp)
             let gpuTemp = self.smoothTemperature(raw: rawGpuTemp, smoothed: &self.smoothedGpuTemp)
 
-            // Scan all temperature sensors / 中文：扫描所有温度传感器
-            let sensors = self.scanAllSensors()
-
             let detectedFanCount = self.numberOfFans > 0 ? self.numberOfFans : self.detectFanCount()
+            let (speeds, minSpeeds, maxSpeeds) = self.readFanData(fanCount: detectedFanCount)
 
-            // Read fan data with validation / 中文：读取并校验风扇数据
-            var speeds: [Int] = []
-            var minSpeeds: [Int] = []
-            var maxSpeeds: [Int] = []
-
-            for i in 0..<detectedFanCount {
-                let actualKey = String(format: "F%dAc", i)
-                let targetKey = String(format: "F%dTg", i)
-                let minKey = String(format: "F%dMn", i)
-                let maxKey = String(format: "F%dMx", i)
-
-                // Try actual speed first, fall back to target if 0 / 中文：先尝试实际转速，为 0 时回退到目标转速
-                if let speed = self.readSMCFanSpeed(key: actualKey), speed > 0 {
-                    speeds.append(self.validateFanRPM(speed))
-                } else if let target = self.readSMCFanSpeed(key: targetKey), target > 0 {
-                    speeds.append(self.validateFanRPM(target))
-                }
-
-                if let min = self.readSMCFanSpeed(key: minKey) {
-                    minSpeeds.append(self.validateFanRPM(min))
-                } else {
-                    minSpeeds.append(FanRPMBounds.fallbackMinWhenSMCUnreadable)
-                }
-                if let max = self.readSMCFanSpeed(key: maxKey) {
-                    maxSpeeds.append(self.validateFanRPM(max))
-                } else {
-                    maxSpeeds.append(-1)
-                }
-            }
-
-            let positiveMaxima = maxSpeeds.filter { $0 > 0 }
-            let peerMax = positiveMaxima.max()
-            for i in maxSpeeds.indices where maxSpeeds[i] <= 0 {
-                maxSpeeds[i] = peerMax ?? FanRPMBounds.fallbackMaxWhenSMCUnreadable
-            }
+            // Slow tier: full sensor list. `scanAllSensors` does up to ~30 IOKit / 中文：慢速档：完整传感器列表。`scanAllSensors` 要做 ~30 次
+            // round-trips on rich-catalogue Macs, so cap it to `slowSensorScan- / 中文：IOKit 往返（在传感器丰富的机型上），因此最多每
+            // Interval`. Intervening ticks keep the previously published list. / 中文：`slowSensorScanInterval` 跑一次；中间 tick 沿用上一份。
+            let now = Date()
+            let needsSensorScan: Bool = {
+                guard let last = self.lastSensorScanTime else { return true }
+                return now.timeIntervalSince(last) >= self.slowSensorScanInterval
+            }()
+            let scannedSensors: [SensorReading]? = needsSensorScan ? self.scanAllSensors() : nil
+            if needsSensorScan { self.lastSensorScanTime = now }
 
             DispatchQueue.main.async {
                 if self.cpuTemperature != cpuTemp { self.cpuTemperature = cpuTemp }
                 if self.gpuTemperature != gpuTemp { self.gpuTemperature = gpuTemp }
-                if self.allSensors != sensors { self.allSensors = sensors }
+                if let scannedSensors, self.allSensors != scannedSensors {
+                    self.allSensors = scannedSensors
+                }
                 if self.fanSpeeds != speeds { self.fanSpeeds = speeds }
                 if self.fanMinSpeeds != minSpeeds { self.fanMinSpeeds = minSpeeds }
                 if self.fanMaxSpeeds != maxSpeeds { self.fanMaxSpeeds = maxSpeeds }
@@ -513,6 +500,58 @@ class SystemMonitor: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Reads actual/target RPM every tick; `Mn` / `Mx` come from [[cachedFanLimits]]. / 中文：每个 tick 读 actual/target RPM；`Mn` / `Mx` 走 [[cachedFanLimits]] 缓存。
+    private func readFanData(fanCount: Int) -> (speeds: [Int], mins: [Int], maxes: [Int]) {
+        var speeds: [Int] = []
+        for i in 0..<fanCount {
+            let actualKey = String(format: "F%dAc", i)
+            let targetKey = String(format: "F%dTg", i)
+            // Try actual speed first, fall back to target if 0 / 中文：先尝试实际转速，为 0 时回退到目标转速
+            if let speed = readSMCFanSpeed(key: actualKey), speed > 0 {
+                speeds.append(validateFanRPM(speed))
+            } else if let target = readSMCFanSpeed(key: targetKey), target > 0 {
+                speeds.append(validateFanRPM(target))
+            }
+        }
+
+        if let cached = cachedFanLimits, cached.count == fanCount {
+            return (speeds, cached.mins, cached.maxes)
+        }
+
+        var minSpeeds: [Int] = []
+        var maxSpeeds: [Int] = []
+        var allReadsSucceeded = true
+        for i in 0..<fanCount {
+            let minKey = String(format: "F%dMn", i)
+            let maxKey = String(format: "F%dMx", i)
+            if let m = readSMCFanSpeed(key: minKey) {
+                minSpeeds.append(validateFanRPM(m))
+            } else {
+                minSpeeds.append(FanRPMBounds.fallbackMinWhenSMCUnreadable)
+                allReadsSucceeded = false
+            }
+            if let m = readSMCFanSpeed(key: maxKey) {
+                maxSpeeds.append(validateFanRPM(m))
+            } else {
+                maxSpeeds.append(-1)
+                allReadsSucceeded = false
+            }
+        }
+        let positiveMaxima = maxSpeeds.filter { $0 > 0 }
+        let peerMax = positiveMaxima.max()
+        for i in maxSpeeds.indices where maxSpeeds[i] <= 0 {
+            maxSpeeds[i] = peerMax ?? FanRPMBounds.fallbackMaxWhenSMCUnreadable
+        }
+        // Only cache when every `Mn`/`Mx` read came back from SMC. Transient / 中文：只有当每个 `Mn`/`Mx` 都从 SMC 真实读到才缓存。
+        // failures (startup race, wake-from-sleep, SMC reconnect) used to / 中文：临时失败（启动期、唤醒、SMC 重连）以前每 tick 重读，
+        // self-heal on the next tick — caching fallback values would freeze / 中文：会自然恢复；如果把 fallback 写进缓存，
+        // them in place until the fan count changes (i.e. effectively never). / 中文：直到风扇数量变化（实际上永远不会）才解锁。
+        if allReadsSucceeded {
+            cachedFanLimits = (fanCount, minSpeeds, maxSpeeds)
+        }
+        return (speeds, minSpeeds, maxSpeeds)
     }
 
     // MARK: - Full Sensor Scan / 中文：完整传感器扫描
