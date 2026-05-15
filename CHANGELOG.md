@@ -2,6 +2,14 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [SemVer](https://semver.org/spec/v2.0.0.html)
 
+## [1.0.1] - 2026-05-15
+
+### Added
+- App now appears in Launchpad (`LSUIElement` set to `NO`); Dock icon is hidden immediately in `applicationWillFinishLaunching` to minimize the brief flash.
+
+### Fixed
+- Eliminated ~40% idle main-thread CPU caused by `FanBladeView`'s `TimelineView(.animation)` ticking at display-refresh rate while the popover was closed. The `NSHostingController` is now mounted on popover open and torn down on close.
+
 ## [1.0.0] - 2026-05-15
 
 First public release. Runs on macOS 26+, Apple Silicon and Intel.
@@ -19,4 +27,5 @@ First public release. Runs on macOS 26+, Apple Silicon and Intel.
 - Daemon socket exposes only three commands: `PING`, `SET`, `AUTO`.
 - Releases are Developer ID signed and notarized.
 
+[1.0.1]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.1
 [1.0.0]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.0
