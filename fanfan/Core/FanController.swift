@@ -492,6 +492,11 @@ class FanController: ObservableObject {
         let unifiedTarget = Int(max(Double(autoFloor), rawTarget))
 
         if !isControlEnabled {
+            // Re-engage after firmware was running the fan (e.g., post screen-sleep / 中文：固件接管过风扇后（如屏幕息屏唤醒）重新接管时，
+            // restoreAutomaticControl). Re-seed from the real RPM so the hysteresis / 中文：用真实转速重新 seed，让滞回基于风扇当前状态，
+            // check tracks the fan's current state, not a stale Swift target that / 中文：而不是接管前那个可能恰好等于新 PID 目标的过期值——
+            // could equal the new PID output and block the re-engagement write. / 中文：否则下次写入会被滞回挡住。
+            lastAppliedSpeed = monitor.fanSpeeds.max() ?? 0
             enableManualMode()
         }
 
