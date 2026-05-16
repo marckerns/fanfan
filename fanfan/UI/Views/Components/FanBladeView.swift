@@ -46,52 +46,18 @@ struct FanBladeView: View {
                     .frame(width: hub * 2.6, height: hub * 2.6)
                     .blur(radius: 6)
 
-                // Drive rotation off the display's vsync so step sizes stay even at low RPM. / 中文：跟随显示器 vsync 驱动旋转，
-                // The static bloom / inner dot stay outside this subtree so they don't re-evaluate per frame. / 中文：低速下步进才不会忽长忽短。静态光晕和内圆点放在子树外，避免每帧重新求值。
-                TimelineView(.animation) { timeline in
-                    let t = timeline.date.timeIntervalSinceReferenceDate
-                    let degrees = (anchorAngle + (t - anchorTime) * visualRps * 360)
-                        .truncatingRemainder(dividingBy: 360)
+                if visualRps > 0 {
+                    // Drive rotation off the display's vsync so step sizes stay even at low RPM. / 中文：跟随显示器 vsync 驱动旋转，
+                    // The static bloom / inner dot stay outside this subtree so they don't re-evaluate per frame. / 中文：低速下步进才不会忽长忽短。静态光晕和内圆点放在子树外，避免每帧重新求值。
+                    TimelineView(.animation) { timeline in
+                        let t = timeline.date.timeIntervalSinceReferenceDate
+                        let degrees = (anchorAngle + (t - anchorTime) * visualRps * 360)
+                            .truncatingRemainder(dividingBy: 360)
 
-                    ZStack {
-                        // Blades — rotate together as one group, anchored at the / 中文：叶片：作为一个组整体旋转，锚点位于
-                        // geometric center via `.frame` so transform-origin is exact. / 中文：通过 `.frame` 定位的几何中心，确保变换原点精确。
-                        ZStack {
-                            ForEach(0..<bladeCount, id: \.self) { i in
-                                BladeShape()
-                                    .fill(bladeGradient)
-                                    .rotationEffect(
-                                        .degrees(Double(i) * (360.0 / Double(bladeCount)))
-                                    )
-                                BladeShape()
-                                    .stroke(strokeColor.opacity(0.18), lineWidth: 0.5)
-                                    .rotationEffect(
-                                        .degrees(Double(i) * (360.0 / Double(bladeCount)))
-                                    )
-                            }
-                        }
-                        .frame(width: r * 2, height: r * 2)
-                        .rotationEffect(.degrees(degrees))
-                        .shadow(color: Color.black.opacity(scheme == .dark ? 0.35 : 0.16),
-                                radius: 2, x: 0, y: 1.5)
-
-                        // Hub — the only place that takes the accent color. / 中文：轮毂：唯一使用强调色的位置。
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        Color.white.opacity(0.55),
-                                        accent,
-                                        accent.opacity(0.7),
-                                    ],
-                                    center: UnitPoint(x: 0.38, y: 0.32),
-                                    startRadius: 0,
-                                    endRadius: hub
-                                )
-                            )
-                            .frame(width: hub * 2, height: hub * 2)
-                            .rotationEffect(.degrees(degrees))
+                        rotor(radius: r, hub: hub, degrees: degrees)
                     }
+                } else {
+                    rotor(radius: r, hub: hub, degrees: anchorAngle)
                 }
 
                 // Inner dot — static, outside `TimelineView`. / 中文：内部黑点——静态，放在 `TimelineView` 外。
@@ -108,6 +74,38 @@ struct FanBladeView: View {
             anchorAngle = (anchorAngle + (now - anchorTime) * oldRps * 360)
                 .truncatingRemainder(dividingBy: 360)
             anchorTime = now
+        }
+    }
+
+    private func rotor(radius r: CGFloat, hub: CGFloat, degrees: Double) -> some View {
+        ZStack {
+            FanRotorShape(bladeCount: bladeCount)
+                .fill(bladeGradient)
+                .overlay {
+                    FanRotorShape(bladeCount: bladeCount)
+                        .stroke(strokeColor.opacity(0.18), lineWidth: 0.5)
+                }
+                .frame(width: r * 2, height: r * 2)
+                .rotationEffect(.degrees(degrees))
+                .shadow(color: Color.black.opacity(scheme == .dark ? 0.35 : 0.16),
+                        radius: 2, x: 0, y: 1.5)
+
+            // Hub — the only place that takes the accent color. / 中文：轮毂：唯一使用强调色的位置。
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.55),
+                            accent,
+                            accent.opacity(0.7),
+                        ],
+                        center: UnitPoint(x: 0.38, y: 0.32),
+                        startRadius: 0,
+                        endRadius: hub
+                    )
+                )
+                .frame(width: hub * 2, height: hub * 2)
+                .rotationEffect(.degrees(degrees))
         }
     }
 
@@ -133,28 +131,40 @@ struct FanBladeView: View {
 // Single swept-blade petal in unit coordinates (-1..1), pointing up. / 中文：单位坐标（-1..1）中朝上的单个扫掠叶片花瓣。
 // Direct port of the path used in the HTML reference. / 中文：直接移植 HTML 参考实现中的路径。
 
-private struct BladeShape: Shape {
+private struct FanRotorShape: Shape {
+    let bladeCount: Int
+
     func path(in rect: CGRect) -> Path {
         let cx = rect.midX
         let cy = rect.midY
         let r  = min(rect.width, rect.height) / 2
 
-        func P(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
-            CGPoint(x: cx + x * r, y: cy + y * r)
+        func point(_ x: CGFloat, _ y: CGFloat, rotation: CGFloat) -> CGPoint {
+            let c = cos(rotation)
+            let s = sin(rotation)
+            return CGPoint(
+                x: cx + (x * c - y * s) * r,
+                y: cy + (x * s + y * c) * r
+            )
         }
 
         var p = Path()
-        p.move(to: P(-0.025, -0.13))
-        p.addCurve(to: P( 0.16, -0.54),
-                   control1: P( 0.10, -0.16),
-                   control2: P( 0.20, -0.34))
-        p.addCurve(to: P(-0.05, -0.62),
-                   control1: P( 0.10, -0.64),
-                   control2: P( 0.00, -0.66))
-        p.addCurve(to: P(-0.025, -0.13),
-                   control1: P(-0.08, -0.50),
-                   control2: P(-0.08, -0.32))
-        p.closeSubpath()
+        let count = max(1, bladeCount)
+        let step = 2 * CGFloat.pi / CGFloat(count)
+        for i in 0..<count {
+            let rotation = CGFloat(i) * step
+            p.move(to: point(-0.025, -0.13, rotation: rotation))
+            p.addCurve(to: point( 0.16, -0.54, rotation: rotation),
+                       control1: point( 0.10, -0.16, rotation: rotation),
+                       control2: point( 0.20, -0.34, rotation: rotation))
+            p.addCurve(to: point(-0.05, -0.62, rotation: rotation),
+                       control1: point( 0.10, -0.64, rotation: rotation),
+                       control2: point( 0.00, -0.66, rotation: rotation))
+            p.addCurve(to: point(-0.025, -0.13, rotation: rotation),
+                       control1: point(-0.08, -0.50, rotation: rotation),
+                       control2: point(-0.08, -0.32, rotation: rotation))
+            p.closeSubpath()
+        }
         return p
     }
 }
