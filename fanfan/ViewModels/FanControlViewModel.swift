@@ -17,8 +17,11 @@ class FanControlViewModel: ObservableObject {
     // Temperature readings / 中文：温度读数
     @Published var cpuTemperature: Double?
     @Published var gpuTemperature: Double?
+    @Published private(set) var maxTemperature: Double = 0
     @Published var allSensors: [SensorReading] = []
     @Published private(set) var sensorSections: [SensorSection] = []
+    @Published private(set) var ssdTemperature: Double?
+    @Published private(set) var batterySensorTemperature: Double?
     
     // Fan data / 中文：风扇数据
     @Published var fanSpeeds: [Int] = []
@@ -128,6 +131,12 @@ class FanControlViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .assign(to: &$gpuTemperature)
 
+        Publishers.CombineLatest($cpuTemperature, $gpuTemperature)
+            .map { max($0 ?? 0, $1 ?? 0) }
+            .removeDuplicates(by: { abs($0 - $1) < 0.1 })
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$maxTemperature)
+
         systemMonitor.$allSensors
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
@@ -138,6 +147,18 @@ class FanControlViewModel: ObservableObject {
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .assign(to: &$sensorSections)
+
+        $allSensors
+            .map(Self.ssdTemperature)
+            .removeDuplicates(by: { Self.optionalEqual($0, $1) })
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$ssdTemperature)
+
+        $allSensors
+            .map(Self.batterySensorTemperature)
+            .removeDuplicates(by: { Self.optionalEqual($0, $1) })
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$batterySensorTemperature)
 
         systemMonitor.$fanSpeeds
             .removeDuplicates()
@@ -259,6 +280,22 @@ class FanControlViewModel: ObservableObject {
         case (let x?, let y?): return abs(x - y) < 0.1
         default: return false
         }
+    }
+
+    private static func ssdTemperature(in sensors: [SensorReading]) -> Double? {
+        sensors.first(where: {
+            $0.category == .storage ||
+            $0.name.localizedCaseInsensitiveContains("ssd") ||
+            $0.name.localizedCaseInsensitiveContains("nand") ||
+            $0.id.hasPrefix("TN")
+        })?.temperature
+    }
+
+    private static func batterySensorTemperature(in sensors: [SensorReading]) -> Double? {
+        sensors.first(where: {
+            $0.category == .battery ||
+            $0.name.localizedCaseInsensitiveContains("battery")
+        })?.temperature
     }
     
     // MARK: - Monitoring Control / 中文：监控控制

@@ -31,7 +31,7 @@ struct PopoverView: View {
     private var hasFans: Bool { viewModel.numberOfFans > 0 }
 
     var body: some View {
-        let atmosphere = Theme.accent(for: viewModel.getMaxTemperature(), scheme: scheme)
+        let atmosphere = Theme.accent(for: viewModel.maxTemperature, scheme: scheme)
         return VStack(spacing: 0) {
             header
 
@@ -260,7 +260,8 @@ struct PopoverView: View {
     // MARK: - Curve card / 中文：曲线卡片
 
     private var curveCard: some View {
-        let accent = Theme.accent(for: viewModel.getMaxTemperature(), scheme: scheme)
+        let maxTemperature = viewModel.maxTemperature
+        let accent = Theme.accent(for: maxTemperature, scheme: scheme)
         return VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(NSLocalizedString("curve.title", comment: ""))
@@ -268,7 +269,7 @@ struct PopoverView: View {
                     .tracking(0.4)
                     .foregroundColor(Theme.text3(scheme))
                 Spacer()
-                Text(String(format: "%.1f°", viewModel.getMaxTemperature()))
+                Text(String(format: "%.1f°", maxTemperature))
                     .font(Theme.num(11.5, weight: .semibold))
                     .foregroundColor(Theme.text1(scheme))
             }
@@ -334,28 +335,17 @@ struct PopoverView: View {
 
     private var fixedPopoverHeight: CGFloat { 640 }
 
-    private var ssdTemp: Double? {
-        viewModel.allSensors
-            .first(where: {
-                $0.category == .storage ||
-                $0.name.localizedCaseInsensitiveContains("ssd") ||
-                $0.name.localizedCaseInsensitiveContains("nand") ||
-                $0.id.hasPrefix("TN")
-            })?.temperature
-    }
+    private var ssdTemp: Double? { viewModel.ssdTemperature }
 
     private var batteryTemp: Double? {
-        if let s = viewModel.allSensors.first(where: {
-            $0.category == .battery ||
-            $0.name.localizedCaseInsensitiveContains("battery")
-        }) { return s.temperature }
+        if let t = viewModel.batterySensorTemperature { return t }
         if let t = battery.batteryInfo.temperature, t > 0 { return t }
         return nil
     }
 
     private var heroMetrics: HeroCardMetrics {
         HeroCardMetrics(
-            maxTemperature: viewModel.getMaxTemperature(),
+            maxTemperature: viewModel.maxTemperature,
             currentFanSpeed: viewModel.currentFanSpeed,
             minRPM: viewModel.effectiveUnifiedMinRPM,
             maxRPM: viewModel.effectiveUnifiedMaxRPM,
@@ -401,11 +391,11 @@ struct PopoverView: View {
 
     private func startHistoryTimer() {
         historyTimer?.invalidate()
-        let seed = viewModel.getMaxTemperature()
+        let seed = viewModel.maxTemperature
         tempHistory = Array(repeating: max(40, seed), count: 60)
         historyTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
             Task { @MainActor in
-                let t = viewModel.getMaxTemperature()
+                let t = viewModel.maxTemperature
                 guard t > 0 else { return }
                 tempHistory.append(t)
                 if tempHistory.count > 60 {

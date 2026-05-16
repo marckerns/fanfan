@@ -86,7 +86,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStatusBarIcon() {
         guard let statusBarManager = statusBarManager else { return }
         
-        let maxTemp = viewModel.getMaxTemperature()
+        let maxTemp = viewModel.maxTemperature
         let power = BatteryMonitor.shared.batteryInfo.powerWatts
         statusBarManager.updateIcon(
             fanSpeeds: viewModel.fanSpeeds,
