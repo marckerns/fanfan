@@ -2,6 +2,14 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [SemVer](https://semver.org/spec/v2.0.0.html)
 
+## [1.0.6] - 2026-05-16
+
+### Added
+- Tag-triggered GitHub Actions workflow now auto-syncs the Homebrew tap (`hoobnn/tap`) on every `v*` release, so `brew upgrade fanfan` picks up new versions without manual cask edits.
+
+### Changed
+- Reverted the Simplified Chinese locale directory back to `zh-Hans.lproj` and restored `knownRegions` to `"zh-Hans"` (undoes the rename from 1.0.4).
+
 ## [1.0.5] - 2026-05-16
 
 ### Fixed
@@ -54,6 +62,7 @@ First public release. Runs on macOS 26+, Apple Silicon and Intel.
 - Daemon socket exposes only three commands: `PING`, `SET`, `AUTO`.
 - Releases are Developer ID signed and notarized.
 
+[1.0.6]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.6
 [1.0.5]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.5
 [1.0.4]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.4
 [1.0.3]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.3
