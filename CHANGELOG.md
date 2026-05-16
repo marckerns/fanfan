@@ -2,6 +2,15 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [SemVer](https://semver.org/spec/v2.0.0.html)
 
+## [1.0.7] - 2026-05-16
+
+### Fixed
+- Automatic mode could leave the fan stuck on firmware control after `restoreAutomaticControl()` handed it back (e.g. after screen sleep). `lastAppliedSpeed` stayed pinned at the previous saturated value, so when the next PID cycle saturated to the same ceiling the hysteresis check saw `diff == 0` and skipped the write. Re-engagement now re-seeds `lastAppliedSpeed` from the fan's real RPM, matching `startAutoControl()`'s seeding strategy.
+
+### Performance
+- `FanControlViewModel` now publishes `maxTemperature`, `ssdTemperature`, and `batterySensorTemperature` as cached `@Published` properties driven by Combine, so the popover and status-bar icon stop running `allSensors.first(where:)` and `max(cpu, gpu)` on every render pass.
+- `FanBladeView` short-circuits the `TimelineView(.animation)` subtree when `visualRps == 0`, so an idle blade no longer redraws each vsync. The per-blade `BladeShape` was also collapsed into a single `FanRotorShape`, halving SwiftUI subview count.
+
 ## [1.0.6] - 2026-05-16
 
 ### Added
@@ -62,6 +71,7 @@ First public release. Runs on macOS 26+, Apple Silicon and Intel.
 - Daemon socket exposes only three commands: `PING`, `SET`, `AUTO`.
 - Releases are Developer ID signed and notarized.
 
+[1.0.7]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.7
 [1.0.6]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.6
 [1.0.5]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.5
 [1.0.4]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.4
