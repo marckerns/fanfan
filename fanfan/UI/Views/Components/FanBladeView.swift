@@ -33,12 +33,6 @@ struct FanBladeView: View {
         return min(3.5, max(0, target))
     }
 
-    /// Cap the animation to 30 fps. The blade silhouette is ~100 pt at most / 中文：动画上限 30 fps。叶片可视尺寸至多 ~100 pt，
-    /// and the rotation is leisurely — `.animation`'s display-refresh rate / 中文：旋转也比较缓慢——`.animation` 跟随显示器刷新率
-    /// (60 or 120 Hz on ProMotion) costs 2–4× the SwiftUI relayout for no / 中文：（60 或 ProMotion 上 120 Hz）相比之下要做 2–4× 的
-    /// perceptible gain at this size. / 中文：SwiftUI 重布局，但在这个尺寸下完全察觉不出差别。
-    private static let animationSchedule = PeriodicTimelineSchedule(from: .now, by: 1.0 / 30)
-
     var body: some View {
         GeometryReader { geo in
             let r = min(geo.size.width, geo.size.height) / 2
@@ -52,10 +46,9 @@ struct FanBladeView: View {
                     .frame(width: hub * 2.6, height: hub * 2.6)
                     .blur(radius: 6)
 
-                // Rotating parts only. The 30 fps cap + this restricted subtree / 中文：仅旋转部分。30 fps + 受限子树
-                // keep SwiftUI's per-frame work to a fraction of the original / 中文：让 SwiftUI 每帧工作量降到原来 `.animation` 路径的
-                // `.animation` path. / 中文：一小部分。
-                TimelineView(Self.animationSchedule) { timeline in
+                // Drive rotation off the display's vsync so step sizes stay even at low RPM. / 中文：跟随显示器 vsync 驱动旋转，
+                // The static bloom / inner dot stay outside this subtree so they don't re-evaluate per frame. / 中文：低速下步进才不会忽长忽短。静态光晕和内圆点放在子树外，避免每帧重新求值。
+                TimelineView(.animation) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                     let degrees = (anchorAngle + (t - anchorTime) * visualRps * 360)
                         .truncatingRemainder(dividingBy: 360)
