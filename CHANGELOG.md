@@ -2,6 +2,12 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [SemVer](https://semver.org/spec/v2.0.0.html)
 
+## [1.0.5] - 2026-05-16
+
+### Fixed
+- Fan blade rotation no longer stutters at low RPM. The previous fixed 30 fps schedule drifted against the display vsync (60 / 120 Hz), producing visibly uneven angle steps; rotation now runs off `TimelineView(.animation)` while the static accent bloom and inner dot stay outside the timeline subtree, keeping per-frame work bounded.
+- `scripts/install.sh` permission and cleanup issues.
+
 ## [1.0.4] - 2026-05-15
 
 ### Added
@@ -48,6 +54,8 @@ First public release. Runs on macOS 26+, Apple Silicon and Intel.
 - Daemon socket exposes only three commands: `PING`, `SET`, `AUTO`.
 - Releases are Developer ID signed and notarized.
 
+[1.0.5]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.5
+[1.0.4]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.4
 [1.0.3]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.3
 [1.0.2]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.2
 [1.0.1]: https://github.com/hoobnn/fanfan/releases/tag/v1.0.1
