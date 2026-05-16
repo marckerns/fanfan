@@ -7,7 +7,7 @@
 //
 
 import XCTest
-@testable import fan
+@testable import fanfan
 
 final class SystemMonitorTests: XCTestCase {
     

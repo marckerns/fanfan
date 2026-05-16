@@ -7,10 +7,46 @@
 //
 
 import XCTest
-@testable import fan
+@testable import fanfan
 
 @MainActor
 final class FanControlTests: XCTestCase {
+    private let fanDefaultsKeys = [
+        "fanControlMode",
+        "perFanManualControl",
+        "manualFanSpeed",
+        "manualFanSpeedsPerFan",
+        "autoThreshold",
+        "autoMaxSpeed",
+        "autoAggressiveness",
+        "pidKpCustom",
+        "pidKiCustom",
+        "pidKdCustom"
+    ]
+    private var savedDefaults: [String: Any] = [:]
+
+    override func setUp() {
+        super.setUp()
+        let defaults = UserDefaults.standard
+        savedDefaults = fanDefaultsKeys.reduce(into: [:]) { result, key in
+            result[key] = defaults.object(forKey: key)
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    override func tearDown() {
+        let defaults = UserDefaults.standard
+        for key in fanDefaultsKeys {
+            if let value = savedDefaults[key] {
+                defaults.set(value, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        savedDefaults.removeAll()
+        super.tearDown()
+    }
+
     
     func testControlModeEnum() {
         XCTAssertEqual(ControlMode.manual, ControlMode.manual)
@@ -22,7 +58,7 @@ final class FanControlTests: XCTestCase {
         let monitor = SystemMonitor()
         let controller = FanController(systemMonitor: monitor)
         
-        XCTAssertEqual(controller.mode, .manual)
+        XCTAssertEqual(controller.mode, .automatic)
         XCTAssertGreaterThanOrEqual(controller.manualSpeed, FanRPMBounds.absoluteWriteMinRPM)
         XCTAssertLessThanOrEqual(controller.manualSpeed, FanRPMBounds.absoluteWriteMaxRPM)
     }
@@ -30,6 +66,8 @@ final class FanControlTests: XCTestCase {
     func testFanControllerManualSpeed() {
         let monitor = SystemMonitor()
         let controller = FanController(systemMonitor: monitor)
+
+        controller.setMode(.manual)
         
         controller.setManualSpeed(3000)
         XCTAssertEqual(controller.manualSpeed, 3000)
@@ -46,13 +84,13 @@ final class FanControlTests: XCTestCase {
         let monitor = SystemMonitor()
         let controller = FanController(systemMonitor: monitor)
         
-        XCTAssertEqual(controller.mode, .manual)
-        
-        controller.setMode(.automatic)
         XCTAssertEqual(controller.mode, .automatic)
         
         controller.setMode(.manual)
         XCTAssertEqual(controller.mode, .manual)
+
+        controller.setMode(.automatic)
+        XCTAssertEqual(controller.mode, .automatic)
     }
     
     func testUserDefaultsManager() {
