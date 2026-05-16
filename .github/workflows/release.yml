@@ -265,6 +265,46 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: 🍺 Update Homebrew tap
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOMEBREW_TAP_TOKEN:-}" ]; then
+            echo "⚠️  HOMEBREW_TAP_TOKEN not set; skipping tap sync."
+            exit 0
+          fi
+
+          VERSION="${{ steps.version.outputs.version }}"
+          DMG_SHA=$(awk '{print $1}' "fanfan-v${VERSION}-macos.dmg.sha256")
+
+          TAP_DIR="$RUNNER_TEMP/homebrew-tap"
+          git clone --depth 1 \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/hoobnn/homebrew-tap.git" \
+            "$TAP_DIR"
+
+          CASK="$TAP_DIR/Casks/fanfan.rb"
+          # BSD sed (macOS runner) needs the -i suffix arg.
+          sed -i.bak -E \
+            -e "s/^(  version \")[^\"]+(\")/\1${VERSION}\2/" \
+            -e "s/^(  sha256 \")[^\"]+(\")/\1${DMG_SHA}\2/" \
+            "$CASK"
+          rm -f "$CASK.bak"
+
+          cd "$TAP_DIR"
+          if git diff --quiet; then
+            echo "ℹ️  Cask already at ${VERSION}; nothing to do."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Casks/fanfan.rb
+          git commit -m "⬆️ arrow-up(fanfan): bump cask to ${VERSION}"
+          git push origin HEAD
+          echo "✅ Tap synced to ${VERSION}"
+
       - name: 📤 Upload artifacts (for non-tag builds)
         if: "!startsWith(github.ref, 'refs/tags/')"
         uses: actions/upload-artifact@v7
