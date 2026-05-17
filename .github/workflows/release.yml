@@ -10,8 +10,8 @@ permissions:
   contents: write  # Required to create releases and upload assets
 
 env:
-  APPLE_TEAM_ID: 8FUPL8QHFH
-  SIGN_IDENTITY: "Developer ID Application: HAOBIN WU (8FUPL8QHFH)"
+  APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+  SIGN_IDENTITY: ${{ vars.SIGN_IDENTITY }}
 
 jobs:
   build-and-release:
