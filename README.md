@@ -42,6 +42,16 @@ fanfan.app  ──unix socket──▶  fanfan-smcd (root)  ──IOKit──▶
 
 The app itself runs unprivileged. Temperature reads go straight through IOKit.
 
+## Star History
+
+<a href="https://star-history.com/#hoobnn/fanfan&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=hoobnn/fanfan&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=hoobnn/fanfan&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=hoobnn/fanfan&type=Date" />
+  </picture>
+</a>
+
 ## Acknowledgements
 
 Forked from [solofan](https://github.com/SoloTeamDev/solofan). Thanks to the solofan team.

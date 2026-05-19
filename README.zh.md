@@ -42,6 +42,16 @@ fanfan.app  ──Unix socket──▶  fanfan-smcd（root）  ──IOKit──
 
 应用本身以普通用户身份运行，温度读取直接走 IOKit。
 
+## Star 增长
+
+<a href="https://star-history.com/#hoobnn/fanfan&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=hoobnn/fanfan&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=hoobnn/fanfan&type=Date" />
+    <img alt="Star 增长曲线" src="https://api.star-history.com/svg?repos=hoobnn/fanfan&type=Date" />
+  </picture>
+</a>
+
 ## 致谢
 
 Fork 自 [solofan](https://github.com/SoloTeamDev/solofan)，
