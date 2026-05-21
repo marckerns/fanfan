@@ -2,6 +2,11 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) · [SemVer](https://semver.org/spec/v2.0.0.html)
 
+## [1.0.8] - 2026-05-21
+
+### Fixed
+- Automatic fan control could silently stop after the app sat in the background (e.g. lid closed or no foreground window). As an `.accessory` menu-bar app, macOS App Nap froze the monitoring and fan-control `Timer`s, so scheduling never resumed on wake until the user reopened the menu bar. The app now holds a `userInitiatedAllowingIdleSystemSleep` activity token for the lifetime of the process, keeping the timers alive while still letting the system sleep normally (closing the lid still saves power).
+
 ## [1.0.7] - 2026-05-16
 
 ### Fixed
