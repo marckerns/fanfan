@@ -14,6 +14,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let viewModel = FanControlViewModel()
     private var iconUpdateTimer: Timer?
     private var displayModeObserver: NSObjectProtocol?
+    /// Keeps App Nap from freezing our background timers. / 中文：阻止 App Nap 冻结后台定时器的活动凭证。
+    private var backgroundActivity: NSObjectProtocol?
     
     func applicationWillFinishLaunching(_ notification: Notification) {
         // Hide dock icon as early as possible to minimize the brief Dock flash
@@ -24,6 +26,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Suppress App Nap. As an .accessory menu-bar app with no foreground
+        // window, macOS otherwise freezes our monitoring/fan-control Timers when
+        // the app sits in the background (e.g. lid closed). When that happens,
+        // automatic scheduling silently stops on wake — even reapplySettings()'s
+        // freshly created Timer gets frozen — until the user interacts with the
+        // menu bar again. `userInitiatedAllowingIdleSystemSleep` keeps the timers
+        // alive while still letting the system sleep normally (so closing the lid
+        // still saves power).
+        // 中文：抑制 App Nap。本应用是无前台窗口的 .accessory 菜单栏程序，否则
+        // 合盖等后台场景下 macOS 会冻结我们的监控/风扇控制 Timer，导致唤醒后自动
+        // 调度静默停止（连 reapplySettings() 新建的 Timer 也会被冻结），直到用户
+        // 再次与菜单栏交互。userInitiatedAllowingIdleSystemSleep 既保持定时器运行，
+        // 又允许系统正常睡眠（合盖依然省电）。
+        backgroundActivity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiatedAllowingIdleSystemSleep],
+            reason: "Continuous fan monitoring and automatic speed control"
+        )
+
         // Initialize components immediately / 中文：立即初始化组件
         setupApplication()
     }
@@ -100,7 +120,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         iconUpdateTimer?.invalidate()
         viewModel.stopMonitoring()
-        
+
+        if let backgroundActivity {
+            ProcessInfo.processInfo.endActivity(backgroundActivity)
+            self.backgroundActivity = nil
+        }
+
         if let observer = displayModeObserver {
             NotificationCenter.default.removeObserver(observer)
         }
