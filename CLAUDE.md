@@ -30,7 +30,7 @@ Swift side of the socket: `fanfan/Core/SMCDaemonClient.swift`. Daemon source: `t
 - `fanfan/App/fanfanApp.swift` — `@main` SwiftUI `App` + `AppDelegate`. The app uses `NSApp.setActivationPolicy(.accessory)` (no Dock icon) and a `Settings` scene placeholder; the real UI surfaces are the status-bar popover (`StatusBarManager`) and a separate `Window("settings")` scene.
 - `fanfan/Core/`
   - `SystemMonitor.swift` — IOKit-backed sensor/SMC reader (large; the catalogue of SMC keys lives here).
-  - `FanController.swift` — automatic-mode controller: rolling temperature history, ±200 RPM hysteresis, smooth ramping, and the Silent / Balanced / Performance / Custom presets.
+  - `FanController.swift` — automatic-mode controller: EMA-smoothed temperature input, a PID loop, an asymmetric RPM dead-band (easy to spin up, reluctant to spin down) with an 8 s minimum hold, asymmetric ramping (fast up / slow down), and the Silent / Balanced / Performance / Custom presets. The anti-hunting tuning (smoothing + asymmetry) exists specifically to stop audible fan "pumping" — preserve it when refactoring.
   - `StatusBarManager.swift` — menu-bar item, popover lifecycle, and the four status-bar display modes (`temperature`, `power`, `fanPercent`, `iconOnly`) driven by the `StatusBarDisplayModeChanged` notification.
   - `SMCDaemonClient.swift`, `PermissionsManager.swift` — see "Privilege architecture" above.
   - `BatteryMonitor.swift`, `LaunchAtLoginManager.swift` (uses `ServiceManager`, no plist hacks), `UserDefaultsManager.swift`, `FanRPMBounds.swift`.

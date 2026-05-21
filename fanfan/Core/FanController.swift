@@ -51,12 +51,28 @@ class FanController: ObservableObject {
     private let tempHistoryMaxCount: Int = 10
     private var lastTempSampleTime: Date = Date()
 
-    /// Hysteresis and noise optimization / 中文：滞回 and noise optimization
-    private let hysteresisRPM: Int = 200
+    /// Exponential moving average of temperature feeding the control loop. / 中文：喂给控制环的温度指数滑动平均。
+    /// SMC temps jitter several °C between 2 s samples; filtering the input is / 中文：SMC 温度在 2 秒采样间会抖动好几摄氏度；先滤波，
+    /// the single biggest lever against noise-driven fan hunting. nil = re-seed. / 中文：是抑制噪声驱动风扇抖动最有效的手段。nil 表示重新播种。
+    private var smoothedTemp: Double?
+    /// EMA weight per new sample → τ ≈ 2 s / α ≈ 6 s smoothing window. / 中文：每个新采样的 EMA 权重 → 平滑窗口时间常数约 6 秒。
+    private let tempSmoothingFactor: Double = 0.3
+
+    /// Hysteresis and noise optimization. The audible "pumping" (loud→soft→loud) / 中文：滞回与噪声优化。可听到的“忽大忽小”
+    /// comes from the fan chasing every transient down then back up, so the / 中文：来自风扇追逐每一次瞬时回落又升高，因此
+    /// dead-band is asymmetric: easy to spin up, reluctant to spin back down. / 中文：死区是非对称的：升速容易，降速迟缓。
+    private let spinUpHysteresisRPM: Int = 200
+    private let spinDownHysteresisRPM: Int = 450
+    /// A spin-up this large bypasses the hold window (rapid-heating safety); / 中文：超过此幅度的升速可越过保持窗口（快速升温的安全兜底）；
+    /// spin-downs never break the hold — that is what stops the pumping. / 中文：降速永远不会打断保持——这正是消除忽大忽小的关键。
+    private let spinUpSafetyOverrideRPM: Int = 500
     private var lastSpeedChangeTime: Date = Date()
-    private let minimumHoldSeconds: TimeInterval = 3.0
+    private let minimumHoldSeconds: TimeInterval = 8.0
+    /// Asymmetric slew: ramp up briskly, glide down slowly so the ear never / 中文：非对称变化率：升速干脆，降速缓慢滑落，
+    /// catches an abrupt drop in fan noise. / 中文：让耳朵察觉不到风扇噪声的突然回落。
+    private let rampUpStep: Int = 800
+    private let rampDownStep: Int = 250
     private var rampTargetSpeed: Int = 0
-    private var rampCurrentSpeed: Int = 0
 
     // MARK: - PID State / 中文：PID 状态
 
@@ -83,17 +99,20 @@ class FanController: ObservableObject {
         return pidKp / 60.0
     }
 
-    /// Derivative time constant ~3 s: predicts where temperature is heading / 中文：Derivative time constant ~3 s: predicts where 温度 is heading
-    /// over the next few cycles, lets fans pre-empt sustained ramps. / 中文：over the next few cycles, lets 风扇s pre-empt sustained ramps.
+    /// Derivative time constant ~2 s: predicts where temperature is heading / 中文：微分时间常数约 2 秒：预测温度走向，
+    /// over the next few cycles, lets fans pre-empt sustained ramps. Kept / 中文：让风扇提前应对持续升温。相比早期的 ×3，
+    /// lower than before because the EMA-filtered input no longer needs a / 中文：增益调低——温度已做 EMA 滤波，
+    /// big derivative gain to fight sensor jitter (and a big one amplified it). / 中文：不再需要大微分增益对抗传感器抖动（大增益反而放大抖动）。
     private var pidKd: Double {
         if let custom = pidKdCustom { return custom }
-        return pidKp * 3.0
+        return pidKp * 2.0
     }
 
     private func resetPIDState() {
         pidIntegral = 0
         pidLastError = 0
         pidLastUpdateTime = Date()
+        smoothedTemp = nil  // re-seed the EMA on the next sample / 中文：下次采样时重新播种 EMA
     }
 
     /// Response curve presets / 中文：响应曲线预设。
@@ -468,12 +487,17 @@ class FanController: ObservableObject {
     private func updateAutoControl() {
         guard mode == .automatic, let monitor = systemMonitor else { return }
 
-        let currentTemp = max(
+        let rawTemp = max(
             monitor.cpuTemperature ?? 0,
             monitor.gpuTemperature ?? 0
         )
 
-        guard currentTemp > 0, monitor.numberOfFans > 0 else { return }
+        guard rawTemp > 0, monitor.numberOfFans > 0 else { return }
+
+        // Smooth the raw SMC reading before anything downstream sees it, so / 中文：先对原始 SMC 读数滤波再交给下游，
+        // sensor jitter can no longer drive the PID, the trend label, or the / 中文：传感器抖动便无法再驱动 PID、趋势标签
+        // load-aware boost. / 中文：或负载感知加速。
+        let currentTemp = smoothTemperature(rawTemp)
 
         // Update temperature history (used by the status-message trend label) / 中文：Update 温度 历史记录 (used by the 状态-message trend label)
         updateTempHistory(currentTemp)
@@ -565,6 +589,18 @@ class FanController: ObservableObject {
 
     // MARK: - Temperature Trend Prediction / 中文：温度趋势预测
 
+    /// Exponential moving average of the control temperature. First sample / 中文：控制温度的指数滑动平均。首个采样
+    /// seeds the filter directly so the loop doesn't lag on engagement. / 中文：直接播种滤波器，避免接管时滞后。
+    private func smoothTemperature(_ raw: Double) -> Double {
+        guard let prev = smoothedTemp else {
+            smoothedTemp = raw
+            return raw
+        }
+        let next = prev + tempSmoothingFactor * (raw - prev)
+        smoothedTemp = next
+        return next
+    }
+
     private func updateTempHistory(_ temp: Double) {
         let now = Date()
         // Only sample at consistent intervals / 中文：Only 采样 at consistent intervals
@@ -619,23 +655,34 @@ class FanController: ObservableObject {
         // First application / 中文：首次应用目标值。
         if lastAppliedSpeed == 0 { return true }
 
+        let delta = target - lastAppliedSpeed
+
         // Minimum hold time check / 中文：检查最小保持时间。
         let elapsed = Date().timeIntervalSince(lastSpeedChangeTime)
         if elapsed < minimumHoldSeconds {
-            // Only override hold time for significant changes (safety) / 中文：仅在变化显著时才出于安全原因覆盖保持时间。
-            return abs(target - lastAppliedSpeed) >= 500
+            // Within the hold window only a large *spin-up* gets through, as a / 中文：保持窗口内只有大幅“升速”能通过，
+            // rapid-heating safety valve. Spin-downs always wait out the hold — / 中文：作为快速升温的安全阀。降速永远等满保持——
+            // letting them break it is exactly what produced the pumping. / 中文：让降速打断保持正是先前忽大忽小的成因。
+            return delta >= spinUpSafetyOverrideRPM
         }
 
-        // Hysteresis: only change if difference exceeds threshold / 中文：滞回: only change if difference exceeds 阈值
-        return abs(target - lastAppliedSpeed) >= hysteresisRPM
+        // Asymmetric dead-band: spin up readily, resist spinning back down. / 中文：非对称死区：升速容易，降速迟缓。
+        if delta >= 0 {
+            return delta >= spinUpHysteresisRPM
+        } else {
+            return -delta >= spinDownHysteresisRPM
+        }
     }
 
-    /// Gradual ramp to avoid sudden RPM jumps / 中文：Gradual ramp to avoid sudden RPM jumps
+    /// Gradual ramp to avoid sudden RPM jumps. Asymmetric: spin up briskly so / 中文：使用渐进过渡，避免转速突变。非对称：升速干脆，
+    /// the machine cools, glide down slowly so the noise drop is inaudible. / 中文：让机器及时降温；降速缓慢，使噪声回落不易被察觉。
     private func rampTransition(from current: Int, to target: Int) -> Int {
-        let maxStep = 1000  // Max RPM change per cycle
         let diff = target - current
-        if abs(diff) <= maxStep { return target }
-        return current + (diff > 0 ? maxStep : -maxStep)
+        if diff > 0 {
+            return diff <= rampUpStep ? target : current + rampUpStep
+        } else {
+            return -diff <= rampDownStep ? target : current - rampDownStep
+        }
     }
 
     private func loadSettings() {

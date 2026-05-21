@@ -453,7 +453,7 @@ class FanControlViewModel: ObservableObject {
     }
     var effectivePIDKd: Double {
         if let v = pidKdCustom { return v }
-        return effectivePIDKp * 3.0
+        return effectivePIDKp * 2.0
     }
     
     // MARK: - Access Control / 中文：访问控制
